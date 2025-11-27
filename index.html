@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonkeyCraft v7.0 - Defend the Fire!</title>
+    <link rel="stylesheet" href="css/default.css">
+</head>
+<body>
+    <div id="ui-layer">
+        <div id="damage-overlay"></div>
+        <div id="crosshair"></div>
+        <div id="debug">MonkeyCraft v7.0<br>Defend the Fire!<br><span id="day-counter" class="day-display">Day: 1</span></div>
+        <div id="status-bars">
+            <div class="bar-container">
+                <div class="bar-label">HEALTH</div>
+                <div id="health-fill" class="bar-fill" style="width:100%;"></div>
+            </div>
+            <div class="bar-container">
+                <div class="bar-label">HUNGER</div>
+                <div id="hunger-fill" class="bar-fill" style="width:100%;"></div>
+            </div>
+        </div>
+        <div id="hotbar"></div>
+        <div id="inventory-screen"></div>
+        <div id="world-labels"></div>
+    </div>
+
+    <div id="menu">
+        <h1>MONKEYCRAFT</h1>
+        <button id="start-btn">PLAY GAME</button>
+        <p style="color:white; margin-top: 20px;">Protect the Campfire! | Refuel with Wood</p>
+    </div>
+
+    <div id="game-over-screen">
+        <h2>THE FIRE DIED</h2>
+        <p style="color: white; font-size: 20px; margin-bottom: 20px;">The monkeys have won in the darkness.</p>
+        <button onclick="location.reload()">TRY AGAIN</button>
+    </div>
+
+    <!-- Three.js and dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <!-- Game modules - Only need to load the main file, it imports the rest -->
+    <script type="module" src="js/MonkeyCraft.js"></script>
+</body>
+</html>
