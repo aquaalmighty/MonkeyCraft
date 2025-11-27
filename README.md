@@ -6,7 +6,7 @@ A 3D voxel survival game where you defend a campfire from waves of monkeys! Buil
 
 ## 🎮 Play Now
 
-**[Play MonkeyCraft →](https://YOUR_USERNAME.github.io/MonkeyCraft/)**
+**[Play MonkeyCraft →](https://aquaalmighty.github.io/MonkeyCraft/)**
 
 ## ✨ Features
 
