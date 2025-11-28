@@ -76,6 +76,15 @@ export class PlayerController {
             handMesh.name = 'hand';
             group.add(handMesh);
             
+            // Create a generic block mesh for holding blocks
+            const blockMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.25, 0.25, 0.25),
+                new THREE.MeshLambertMaterial({ color: 0xFFFFFF })
+            );
+            blockMesh.name = 'block';
+            blockMesh.visible = false;
+            group.add(blockMesh);
+            
             return group;
         };
 
@@ -233,18 +242,18 @@ export class PlayerController {
         if (this.entityManager.campfire.mesh) {
             const hits = ray.intersectObject(this.entityManager.campfire.mesh, true);
             if (hits.length > 0 && hits[0].distance < 4) {
-                if (isWood && this.uiManager.inventory[selectedBlockId] > 0) {
-                    this.uiManager.inventory[selectedBlockId]--;
+                if (isWood && this.uiManager.getItemCount(selectedBlockId) > 0) {
+                    this.uiManager.decrementItem(selectedBlockId);
                     this.entityManager.refuelCampfire(10);
                     this.uiManager.cleanInventory();
                     this.uiManager.updateUI();
                     return;
                 }
                 
-                const offhandItem = this.uiManager.offhandItem;
-                const isOffWood = offhandItem === BLOCKS.WOOD || offhandItem === BLOCKS.PLANKS;
-                if (isOffWood && this.uiManager.inventory[offhandItem] > 0) {
-                    this.uiManager.inventory[offhandItem]--;
+                const offhandItemId = this.uiManager.offhandSlot.itemId;
+                const isOffWood = offhandItemId === BLOCKS.WOOD || offhandItemId === BLOCKS.PLANKS;
+                if (isOffWood && this.uiManager.getItemCount(offhandItemId) > 0) {
+                    this.uiManager.decrementItem(offhandItemId);
                     this.entityManager.refuelCampfire(10);
                     this.uiManager.cleanInventory();
                     this.uiManager.updateUI();
@@ -255,8 +264,8 @@ export class PlayerController {
 
         // Eat watermelon
         if (selectedBlockId === BLOCKS.WATERMELON) {
-            if (this.uiManager.inventory[BLOCKS.WATERMELON] > 0 && this.uiManager.playerHunger < 10) {
-                this.uiManager.inventory[BLOCKS.WATERMELON]--;
+            if (this.uiManager.getItemCount(BLOCKS.WATERMELON) > 0 && this.uiManager.playerHunger < 10) {
+                this.uiManager.decrementItem(BLOCKS.WATERMELON);
                 this.uiManager.playerHunger = Math.min(10, this.uiManager.playerHunger + 3);
                 this.uiManager.cleanInventory();
                 this.uiManager.updateUI();
@@ -265,7 +274,7 @@ export class PlayerController {
         }
         
         // Place block
-        if (this.uiManager.inventory[selectedBlockId] > 0 && !isSword && !isPickaxe && !isTorch) {
+        if (this.uiManager.getItemCount(selectedBlockId) > 0 && !isSword && !isPickaxe && !isTorch) {
             const meshes = Object.values(this.worldEngine.chunks).map(c => c.mesh).filter(Boolean);
             const hits = ray.intersectObjects(meshes);
 
@@ -286,7 +295,7 @@ export class PlayerController {
                         ty === Math.floor(this.entityManager.campfire.mesh?.position.y || 0)) return;
 
                     this.worldEngine.setWorldBlock(tx, ty, tz, selectedBlockId);
-                    this.uiManager.inventory[selectedBlockId]--;
+                    this.uiManager.decrementItem(selectedBlockId);
                     this.worldEngine.updateChunks();
                     this.uiManager.cleanInventory();
                     this.uiManager.updateUI();
@@ -308,10 +317,21 @@ export class PlayerController {
     }
 
     updateHandVisuals(group, itemId) {
+        const isTool = itemId === BLOCKS.SWORD || itemId === BLOCKS.PICKAXE || itemId === BLOCKS.TORCH;
+        const isAir = itemId === BLOCKS.AIR;
+        
         group.getObjectByName('sword').visible = (itemId === BLOCKS.SWORD);
         group.getObjectByName('pickaxe').visible = (itemId === BLOCKS.PICKAXE);
         group.getObjectByName('torch').visible = (itemId === BLOCKS.TORCH);
-        group.getObjectByName('hand').visible = (itemId !== BLOCKS.SWORD && itemId !== BLOCKS.PICKAXE && itemId !== BLOCKS.TORCH);
+        group.getObjectByName('hand').visible = isAir;
+        
+        const blockMesh = group.getObjectByName('block');
+        if (blockMesh) {
+            blockMesh.visible = !isTool && !isAir;
+            if (blockMesh.visible && BLOCK_COLORS[itemId]) {
+                blockMesh.material.color.setHex(parseInt(BLOCK_COLORS[itemId].replace('#', ''), 16));
+            }
+        }
     }
 
     checkCollision(pos) {
@@ -338,7 +358,7 @@ export class PlayerController {
         for (let i = this.entityManager.droppedItems.length - 1; i >= 0; i--) {
             const item = this.entityManager.droppedItems[i];
             if (playerFeetPos.distanceToSquared(item.mesh.position) < pickupRadiusSq) {
-                this.uiManager.inventory[item.blockId] = (this.uiManager.inventory[item.blockId] || 0) + 1;
+                this.uiManager.addItem(item.blockId, 1);
                 this.entityManager.removeDroppedItem(item);
                 this.uiManager.updateUI();
             }
@@ -373,11 +393,13 @@ export class PlayerController {
         // Update hand visuals
         const selectedBlockId = this.uiManager.getSelectedBlockId();
         this.updateHandVisuals(this.playerHand.children[0], selectedBlockId);
-        this.updateHandVisuals(this.offHandGroup.children[0], this.uiManager.offhandItem);
+        this.updateHandVisuals(this.offHandGroup.children[0], this.uiManager.offhandSlot.itemId);
 
         // Torch light
         if (this.playerLight) {
-            this.playerLight.intensity = (selectedBlockId === BLOCKS.TORCH) ? 1.0 : 0.0;
+            const hasMainTorch = selectedBlockId === BLOCKS.TORCH;
+            const hasOffTorch = this.uiManager.offhandSlot.itemId === BLOCKS.TORCH;
+            this.playerLight.intensity = (hasMainTorch || hasOffTorch) ? 1.0 : 0.0;
         }
 
         // Movement

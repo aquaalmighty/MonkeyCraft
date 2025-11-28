@@ -219,17 +219,18 @@ button:hover {
 
 #inventory-slots-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-    gap: 5px;
-    padding: 5px;
-    background: #b0b0b0;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    padding: 10px;
+    background: #a0a0a0;
     border-radius: 4px;
-    min-height: 150px;
+    min-height: auto;
 }
 
 .inv-slot {
-    width: 40px;
-    height: 40px;
+    aspect-ratio: 1;
+    width: 100%;
+    max-width: 50px;
     background: #8b8b8b;
     border: 2px solid #373737;
     display: flex;
@@ -241,6 +242,26 @@ button:hover {
     font-size: 10px;
     cursor: pointer;
     border-radius: 4px;
+    transition: all 0.1s ease;
+}
+
+.draggable-slot {
+    cursor: grab;
+}
+
+.draggable-slot:active {
+    cursor: grabbing;
+}
+
+.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+}
+
+.drag-over {
+    background: #a5d6a7 !important;
+    border-color: #2e7d32 !important;
+    box-shadow: 0 0 8px rgba(46, 125, 50, 0.6);
 }
 
 .offhand-slot-container {

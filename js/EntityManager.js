@@ -35,13 +35,7 @@ export class EntityManager {
         loader.load('assets/models/campfire.glb', (gltf) => {
             this.campfire.mesh = gltf.scene;
             
-            this.campfire.mesh.traverse((child) => {
-                if (child.isMesh) {
-                    child.material.metalness = 0;
-                    child.material.roughness = 1;
-                    child.material.side = THREE.DoubleSide;
-                }
-            });
+            this.applyShaderFix(this.campfire.mesh);
 
             this.campfire.mesh.position.set(0.5, y, 0.5);
             this.campfire.mesh.scale.set(1.5, 1.5, 1.5);
@@ -57,6 +51,16 @@ export class EntityManager {
             document.getElementById('world-labels').appendChild(bar);
             this.campfire.barElement = bar;
             this.campfire.fillElement = bar.querySelector('.world-health-fill');
+        });
+    }
+
+    applyShaderFix(model) {
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.material.metalness = 0;
+                child.material.roughness = 1;
+                child.material.side = THREE.DoubleSide;
+            }
         });
     }
 

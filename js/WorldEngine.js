@@ -368,14 +368,18 @@ export class WorldEngine {
         const loader = new THREE.GLTFLoader();
         loader.load('assets/models/sapling.glb', (gltf) => {
             this.saplingModel = gltf.scene;
-            this.saplingModel.traverse((child) => {
-                if (child.isMesh) {
-                    child.material.metalness = 0;
-                    child.material.roughness = 1;
-                    child.material.side = THREE.DoubleSide;
-                }
-            });
+            this.applyShaderFix(this.saplingModel);
             this.saplingModel.scale.set(0.5, 0.5, 0.5);
+        });
+    }
+
+    applyShaderFix(model) {
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.material.metalness = 0;
+                child.material.roughness = 1;
+                child.material.side = THREE.DoubleSide;
+            }
         });
     }
 

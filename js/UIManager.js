@@ -5,9 +5,12 @@ import { BLOCKS, BLOCK_COLORS, HOTBAR_SLOTS, MAX_HP, MAX_HUNGER } from './GameCo
 export class UIManager {
     constructor(controls) {
         this.controls = controls;
-        this.inventory = {};
-        this.hotbarItems = Array(HOTBAR_SLOTS).fill(BLOCKS.AIR);
-        this.offhandItem = BLOCKS.AIR;
+        // Inventory structure: array of {itemId, count} objects for main inventory
+        this.inventorySlots = [];
+        // Hotbar: array of {itemId, count} objects
+        this.hotbarSlots = Array(HOTBAR_SLOTS).fill(null).map(() => ({itemId: BLOCKS.AIR, count: 0}));
+        // Offhand slot
+        this.offhandSlot = {itemId: BLOCKS.AIR, count: 0};
         this.selectedBlockIndex = 0;
         this.isInventoryOpen = false;
         
@@ -20,53 +23,121 @@ export class UIManager {
     }
 
     initInventory() {
-        for (let k in BLOCKS) this.inventory[BLOCKS[k]] = 0;
-        this.inventory[BLOCKS.GRASS] = 10;
-        this.inventory[BLOCKS.DIRT] = 10;
-        this.inventory[BLOCKS.STONE] = 10;
-        this.inventory[BLOCKS.WOOD] = 20;
-        this.inventory[BLOCKS.PLANKS] = 10;
-        this.inventory[BLOCKS.SWORD] = 1;
-        this.inventory[BLOCKS.PICKAXE] = 1;
-        this.inventory[BLOCKS.TORCH] = 10;
-        this.inventory[BLOCKS.WATERMELON] = 5;
+        // Initialize inventory slots - empty, hotbar has starting items
+        this.inventorySlots = [];
         
-        this.hotbarItems[0] = BLOCKS.GRASS;
-        this.hotbarItems[1] = BLOCKS.PICKAXE;
-        this.hotbarItems[2] = BLOCKS.STONE;
-        this.hotbarItems[3] = BLOCKS.SWORD;
-        this.hotbarItems[4] = BLOCKS.TORCH;
+        this.hotbarSlots[0] = {itemId: BLOCKS.SWORD, count: 1};
+        this.hotbarSlots[1] = {itemId: BLOCKS.PICKAXE, count: 1};
+        this.hotbarSlots[2] = {itemId: BLOCKS.TORCH, count: 1};
+        this.hotbarSlots[3] = {itemId: BLOCKS.WOOD, count: 25};
+        this.hotbarSlots[4] = {itemId: BLOCKS.AIR, count: 0};
     }
 
     cleanInventory() {
-        for (let k in this.inventory) {
-            if (this.inventory[k] <= 0) this.inventory[k] = 0;
-        }
-        
-        for (let i = 0; i < HOTBAR_SLOTS; i++) {
-            if (this.hotbarItems[i] !== BLOCKS.AIR && 
-                this.inventory[this.hotbarItems[i]] <= 0 && 
-                this.hotbarItems[i] !== BLOCKS.SWORD && 
-                this.hotbarItems[i] !== BLOCKS.PICKAXE) {
-                this.hotbarItems[i] = BLOCKS.AIR;
+        // Mark empty inventory slots as AIR instead of removing them
+        for (let i = 0; i < this.inventorySlots.length; i++) {
+            if (this.inventorySlots[i].count <= 0) {
+                this.inventorySlots[i] = {itemId: BLOCKS.AIR, count: 0};
             }
         }
         
-        if (this.offhandItem !== BLOCKS.AIR && 
-            this.inventory[this.offhandItem] <= 0 &&
-            this.offhandItem !== BLOCKS.SWORD && 
-            this.offhandItem !== BLOCKS.PICKAXE) {
-            this.offhandItem = BLOCKS.AIR;
+        // Clean hotbar slots
+        for (let i = 0; i < HOTBAR_SLOTS; i++) {
+            if (this.hotbarSlots[i].count <= 0) {
+                this.hotbarSlots[i] = {itemId: BLOCKS.AIR, count: 0};
+            }
+        }
+        
+        // Clean offhand
+        if (this.offhandSlot.count <= 0) {
+            this.offhandSlot = {itemId: BLOCKS.AIR, count: 0};
         }
     }
 
     getSelectedBlockId() {
-        return this.hotbarItems[this.selectedBlockIndex];
+        return this.hotbarSlots[this.selectedBlockIndex].itemId;
     }
 
     selectHotbarSlot(index) {
         this.selectedBlockIndex = index;
         this.updateUI();
+    }
+
+    // Helper method to get total count of an item across all slots
+    getItemCount(itemId) {
+        let count = 0;
+        for (let slot of this.inventorySlots) {
+            if (slot.itemId === itemId) count += slot.count;
+        }
+        for (let slot of this.hotbarSlots) {
+            if (slot.itemId === itemId) count += slot.count;
+        }
+        if (this.offhandSlot.itemId === itemId) count += this.offhandSlot.count;
+        return count;
+    }
+
+    // Helper method to decrement an item by 1 (removes from first found slot)
+    decrementItem(itemId) {
+        // Try to decrement from hotbar first (more accessible)
+        for (let slot of this.hotbarSlots) {
+            if (slot.itemId === itemId && slot.count > 0) {
+                slot.count--;
+                return true;
+            }
+        }
+        // Then try inventory
+        for (let slot of this.inventorySlots) {
+            if (slot.itemId === itemId && slot.count > 0) {
+                slot.count--;
+                return true;
+            }
+        }
+        // Finally try offhand
+        if (this.offhandSlot.itemId === itemId && this.offhandSlot.count > 0) {
+            this.offhandSlot.count--;
+            return true;
+        }
+        return false;
+    }
+
+    // Helper method to add an item (adds to first found slot of that item, or creates new slot)
+    addItem(itemId, amount = 1) {
+        // First, try to add to an existing stack in the hotbar
+        for (let slot of this.hotbarSlots) {
+            if (slot.itemId === itemId) {
+                slot.count += amount;
+                return;
+            }
+        }
+        
+        // Then, try to add to an existing stack in the inventory
+        for (let slot of this.inventorySlots) {
+            if (slot.itemId === itemId) {
+                slot.count += amount;
+                return;
+            }
+        }
+
+        // If no existing stack, find an empty slot in the hotbar
+        for (let slot of this.hotbarSlots) {
+            if (slot.itemId === BLOCKS.AIR) {
+                slot.itemId = itemId;
+                slot.count = amount;
+                return;
+            }
+        }
+        
+        // If hotbar is full, find an empty slot in the inventory
+        for (let slot of this.inventorySlots) {
+            if (slot.itemId === BLOCKS.AIR) {
+                slot.itemId = itemId;
+                slot.count = amount;
+                return;
+            }
+        }
+
+        // If no empty slots, create a new slot in the inventory
+        this.inventorySlots.push({itemId: itemId, count: amount});
     }
 
     getBlockIconHTML(id) {
@@ -95,21 +166,20 @@ export class UIManager {
         const hb = document.getElementById('hotbar');
         hb.innerHTML = '';
         
-        const selectedBlockId = this.hotbarItems[this.selectedBlockIndex];
+        const selectedSlot = this.hotbarSlots[this.selectedBlockIndex];
         
-        this.hotbarItems.forEach((id, index) => {
+        this.hotbarSlots.forEach((slot, index) => {
             const d = document.createElement('div');
             d.className = 'slot ' + (this.selectedBlockIndex === index ? 'active' : '');
-            d.innerHTML = this.getBlockIconHTML(id);
+            d.innerHTML = this.getBlockIconHTML(slot.itemId);
             
             const c = document.createElement('span');
             c.className = 'slot-count';
-            const count = this.inventory[id] || 0;
-            c.innerText = (id !== BLOCKS.AIR && 
-                          id !== BLOCKS.SWORD && 
-                          id !== BLOCKS.PICKAXE && 
-                          id !== BLOCKS.TORCH && 
-                          count > 0) ? count : '';
+            c.innerText = (slot.itemId !== BLOCKS.AIR && 
+                          slot.itemId !== BLOCKS.SWORD && 
+                          slot.itemId !== BLOCKS.PICKAXE && 
+                          slot.itemId !== BLOCKS.TORCH && 
+                          slot.count > 0) ? slot.count : '';
             
             d.appendChild(c);
             d.onclick = () => {
@@ -140,43 +210,37 @@ export class UIManager {
     }
 
     renderInventoryScreen(scr) {
-        scr.innerHTML = '<h2>Inventory (E to Close)</h2><p style="font-size:12px;">Click to move to Hotbar/Offhand.</p>';
+        scr.innerHTML = '<h2>Inventory (E to Close)</h2><p style="font-size:12px;">Drag items to move them between inventory slots.</p>';
         
         const invGrid = document.createElement('div');
         invGrid.id = 'inventory-slots-grid';
+        invGrid.setAttribute('data-zone', 'inventory');
         scr.appendChild(invGrid);
         
-        const keys = new Set();
-        Object.keys(this.inventory).map(Number).filter(k => this.inventory[k] > 0).forEach(id => keys.add(id));
-        this.hotbarItems.forEach(id => keys.add(id));
-        if (this.offhandItem !== BLOCKS.AIR) keys.add(this.offhandItem);
+        // Ensure inventory has at least 25 slots
+        const minSlots = 25;
+        while (this.inventorySlots.length < minSlots) {
+            this.inventorySlots.push({itemId: BLOCKS.AIR, count: 0});
+        }
         
-        const sortedKeys = Array.from(keys).filter(id => id !== BLOCKS.AIR).sort((a, b) => a - b);
-        
-        sortedKeys.forEach(id => {
+        // Render all inventory slots
+        this.inventorySlots.slice(0, minSlots).forEach((slot, idx) => {
             const d = document.createElement('div');
-            d.className = 'inv-slot';
-            d.innerHTML = this.getBlockIconHTML(id);
+            d.className = 'inv-slot draggable-slot';
+            d.draggable = true;
+            d.setAttribute('data-zone', 'inventory');
+            d.setAttribute('data-slot-index', idx);
+            d.setAttribute('data-item-id', slot.itemId);
+            d.innerHTML = this.getBlockIconHTML(slot.itemId);
             
             const c = document.createElement('span');
             c.className = 'slot-count';
-            const count = this.inventory[id] || 0;
-            c.innerText = (id !== BLOCKS.SWORD && id !== BLOCKS.PICKAXE && id !== BLOCKS.TORCH) ? count : '';
+            if (slot.count > 0) {
+                c.innerText = (slot.itemId !== BLOCKS.SWORD && slot.itemId !== BLOCKS.PICKAXE && slot.itemId !== BLOCKS.TORCH) ? slot.count : '';
+            }
             d.appendChild(c);
             
-            d.onclick = () => {
-                const emptyHbIdx = this.hotbarItems.indexOf(BLOCKS.AIR);
-                if (emptyHbIdx !== -1) {
-                    if (this.hotbarItems.includes(id) && 
-                        (id === BLOCKS.SWORD || id === BLOCKS.PICKAXE || id === BLOCKS.TORCH)) return;
-                    this.hotbarItems[emptyHbIdx] = id;
-                } else if (this.offhandItem === BLOCKS.AIR) {
-                    this.offhandItem = id;
-                } else {
-                    this.hotbarItems[this.selectedBlockIndex] = id;
-                }
-                this.renderInventoryScreen(scr);
-            };
+            this.addDragEventListeners(d, 'inventory', idx);
             invGrid.appendChild(d);
         });
         
@@ -186,60 +250,135 @@ export class UIManager {
         scr.appendChild(hbTitle);
 
         const hbInv = document.createElement('div');
+        hbInv.id = 'inventory-hotbar-zone';
+        hbInv.setAttribute('data-zone', 'hotbar');
         hbInv.style.cssText = 'display:flex; gap:5px; margin-top:5px;';
         scr.appendChild(hbInv);
         
-        this.hotbarItems.forEach((id, idx) => {
+        this.hotbarSlots.forEach((slot, idx) => {
             const d = document.createElement('div');
-            d.className = 'slot ' + (this.selectedBlockIndex === idx ? 'active' : '');
-            d.innerHTML = this.getBlockIconHTML(id);
+            d.className = 'slot draggable-slot ' + (this.selectedBlockIndex === idx ? 'active' : '');
+            d.draggable = true;
+            d.setAttribute('data-zone', 'hotbar');
+            d.setAttribute('data-slot-index', idx);
+            d.setAttribute('data-item-id', slot.itemId);
+            d.innerHTML = this.getBlockIconHTML(slot.itemId);
             
             const c = document.createElement('span');
             c.className = 'slot-count';
-            const count = this.inventory[id] || 0;
-            c.innerText = (id !== BLOCKS.AIR && 
-                          id !== BLOCKS.SWORD && 
-                          id !== BLOCKS.PICKAXE && 
-                          id !== BLOCKS.TORCH && 
-                          count > 0) ? count : '';
+            c.innerText = (slot.itemId !== BLOCKS.AIR && 
+                          slot.itemId !== BLOCKS.SWORD && 
+                          slot.itemId !== BLOCKS.PICKAXE && 
+                          slot.itemId !== BLOCKS.TORCH && 
+                          slot.count > 0) ? slot.count : '';
             d.appendChild(c);
 
-            d.onclick = () => {
-                if (id !== BLOCKS.AIR) {
-                    this.hotbarItems[idx] = BLOCKS.AIR;
-                    this.renderInventoryScreen(scr);
-                }
-            };
+            this.addDragEventListeners(d, 'hotbar', idx);
             hbInv.appendChild(d);
         });
         
         // Offhand
         const ofDiv = document.createElement('div');
         ofDiv.className = 'offhand-slot-container';
+        ofDiv.setAttribute('data-zone', 'offhand');
         ofDiv.innerHTML = '<span>Offhand:</span>';
         
         const slot = document.createElement('div');
-        slot.className = 'inv-slot';
-        slot.innerHTML = this.getBlockIconHTML(this.offhandItem);
+        slot.className = 'inv-slot draggable-slot';
+        slot.draggable = true;
+        slot.setAttribute('data-zone', 'offhand');
+        slot.setAttribute('data-item-id', this.offhandSlot.itemId);
+        slot.innerHTML = this.getBlockIconHTML(this.offhandSlot.itemId);
         
-        if (this.offhandItem !== BLOCKS.AIR && 
-            this.inventory[this.offhandItem] > 0 && 
-            this.offhandItem !== BLOCKS.SWORD && 
-            this.offhandItem !== BLOCKS.PICKAXE && 
-            this.offhandItem !== BLOCKS.TORCH) {
+        if (this.offhandSlot.itemId !== BLOCKS.AIR && 
+            this.offhandSlot.count > 0 && 
+            this.offhandSlot.itemId !== BLOCKS.SWORD && 
+            this.offhandSlot.itemId !== BLOCKS.PICKAXE && 
+            this.offhandSlot.itemId !== BLOCKS.TORCH) {
             const cnt = document.createElement('span');
             cnt.className = 'slot-count';
-            cnt.innerText = this.inventory[this.offhandItem];
+            cnt.innerText = this.offhandSlot.count;
             slot.appendChild(cnt);
         }
         
-        slot.onclick = () => {
-            this.offhandItem = BLOCKS.AIR;
-            this.renderInventoryScreen(scr);
-        };
-        
+        this.addDragEventListeners(slot, 'offhand', 0);
         ofDiv.appendChild(slot);
         scr.appendChild(ofDiv);
+    }
+
+    addDragEventListeners(element, zone, slotIndex) {
+        element.addEventListener('dragstart', (e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('sourceZone', zone);
+            e.dataTransfer.setData('sourceIndex', slotIndex);
+            element.classList.add('dragging');
+        });
+
+        element.addEventListener('dragend', (e) => {
+            element.classList.remove('dragging');
+        });
+
+        // Make slots drop targets
+        element.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            element.classList.add('drag-over');
+        });
+
+        element.addEventListener('dragleave', (e) => {
+            element.classList.remove('drag-over');
+        });
+
+        element.addEventListener('drop', (e) => {
+            e.preventDefault();
+            element.classList.remove('drag-over');
+            
+            const sourceZone = e.dataTransfer.getData('sourceZone');
+            const sourceIndex = parseInt(e.dataTransfer.getData('sourceIndex'));
+            
+            this.handleInventoryDrop(sourceZone, sourceIndex, zone, slotIndex);
+            
+            const scr = document.getElementById('inventory-screen');
+            this.renderInventoryScreen(scr);
+            this.updateUI();  // Update the visible hotbar
+        });
+    }
+
+    handleInventoryDrop(sourceZone, sourceIndex, targetZone, targetIndex) {
+        // Get source and target slots
+        let sourceSlot = null;
+        let targetSlot = null;
+
+        if (sourceZone === 'inventory') {
+            sourceSlot = this.inventorySlots[sourceIndex];
+        } else if (sourceZone === 'hotbar') {
+            sourceSlot = this.hotbarSlots[sourceIndex];
+        } else if (sourceZone === 'offhand') {
+            sourceSlot = this.offhandSlot;
+        }
+
+        if (targetZone === 'inventory') {
+            targetSlot = this.inventorySlots[targetIndex];
+        } else if (targetZone === 'hotbar') {
+            targetSlot = this.hotbarSlots[targetIndex];
+        } else if (targetZone === 'offhand') {
+            targetSlot = this.offhandSlot;
+        }
+
+        if (!sourceSlot || !targetSlot) return;
+
+        // If dragging to the same slot, do nothing
+        if (sourceZone === targetZone && sourceIndex === targetIndex) return;
+
+        // Swap the entire slots
+        const temp = {itemId: targetSlot.itemId, count: targetSlot.count};
+        targetSlot.itemId = sourceSlot.itemId;
+        targetSlot.count = sourceSlot.count;
+        sourceSlot.itemId = temp.itemId;
+        sourceSlot.count = temp.count;
+
+        // Clean up empty slots
+        this.cleanInventory();
     }
 
     updateHunger(dt) {
