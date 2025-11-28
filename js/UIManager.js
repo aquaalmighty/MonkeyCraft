@@ -146,16 +146,19 @@ export class UIManager {
         }
 
         if (id === BLOCKS.SWORD) {
-            return `<svg viewBox="0 0 100 100" class="block-icon"><path d="M50 10 L60 20 L50 30 L40 20 Z" fill="#8B4513"/><rect x="45" y="30" width="10" height="60" fill="#cccccc"/></svg>`;
+            return `<img src="assets/textures/icons/sword.png" class="block-icon" alt="Sword" style="width:30px; height:30px; object-fit:contain; image-rendering:pixelated;"/>`;
         }
         if (id === BLOCKS.PICKAXE) {
-            return `<svg viewBox="0 0 100 100" class="block-icon"><path d="M10 30 Q50 0 90 30 L80 40 Q50 15 20 40 Z" fill="#888"/><rect x="45" y="30" width="10" height="60" fill="#8B4513"/></svg>`;
+            return `<img src="assets/textures/icons/pickaxe.png" class="block-icon" alt="Pickaxe" style="width:30px; height:30px; object-fit:contain; image-rendering:pixelated;"/>`;
         }
         if (id === BLOCKS.TORCH) {
-            return `<svg viewBox="0 0 100 100" class="block-icon"><rect x="40" y="40" width="20" height="50" fill="#8B4513"/><circle cx="50" cy="30" r="15" fill="#FFD700"/></svg>`;
+            return `<img src="assets/textures/icons/torch.png" class="block-icon" alt="Torch" style="width:30px; height:30px; object-fit:contain; image-rendering:pixelated;"/>`;
         }
         if (id === BLOCKS.SAPLING) {
-            return `<div class="block-icon" style="background:transparent; display:flex; justify-content:center; align-items:end;"><div style="width:4px; height:15px; background:#4a3728;"></div><div style="width:12px; height:12px; background:#2d5a27; border-radius:50%; margin-bottom:10px; margin-left:-8px;"></div></div>`;
+            return `<img src="assets/textures/icons/sapling.png" class="block-icon" alt="Sapling" style="width:30px; height:30px; object-fit:contain; image-rendering:pixelated;"/>`;
+        }
+        if (id === BLOCKS.WATERMELON) {
+            return `<img src="assets/textures/icons/watermelon.png" class="block-icon" alt="Watermelon" style="width:30px; height:30px; object-fit:contain; image-rendering:pixelated;"/>`;
         }
         
         const color = BLOCK_COLORS[id] || 'transparent';

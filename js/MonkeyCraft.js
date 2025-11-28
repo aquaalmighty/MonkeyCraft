@@ -5,6 +5,7 @@ import { EntityManager } from './EntityManager.js';
 import { PlayerController } from './PlayerController.js';
 import { UIManager } from './UIManager.js';
 import { DayNightCycle } from './DayNightCycle.js';
+import { ObjectiveManager } from './ObjectiveManager.js';
 
 class MonkeyCraft {
     constructor() {
@@ -20,6 +21,7 @@ class MonkeyCraft {
         this.playerController = null;
         this.uiManager = null;
         this.dayNightCycle = null;
+        this.objectiveManager = null;
     }
 
     init() {
@@ -50,6 +52,7 @@ class MonkeyCraft {
         this.uiManager = new UIManager(this.controls);
         this.entityManager = new EntityManager(this.scene, this.worldEngine);
         this.dayNightCycle = new DayNightCycle(this.scene);
+        this.objectiveManager = new ObjectiveManager();
         this.playerController = new PlayerController(
             this.camera,
             this.controls,
@@ -68,16 +71,39 @@ class MonkeyCraft {
         // Initialize campfire
         this.entityManager.initCampfire(() => this.endGame());
 
-        // Spawn initial monkeys
-        for (let i = 0; i < 5; i++) {
-            this.entityManager.spawnMonkey(this.controls.getObject().position);
-        }
+        // Setup objectives
+        this.setupObjectives();
 
         // Initialize UI
         this.uiManager.updateUI();
 
         // Start game loop
         this.animate();
+    }
+
+    setupObjectives() {
+        // Objective 1: Prepare for nightfall (1 minute timer)
+        this.objectiveManager.addObjective(
+            'PREPARE FOR NIGHTFALL',
+            60, // 1 minute in seconds
+            () => {
+                // When timer completes, start spawning monkeys
+                this.entityManager.allowContinuousSpawning = true;
+                for (let i = 0; i < 5; i++) {
+                    this.entityManager.spawnMonkey(this.controls.getObject().position);
+                }
+            }
+        );
+
+        // Objective 2: Survive (no timer)
+        this.objectiveManager.addObjective(
+            'SURVIVE',
+            0, // No timer
+            null
+        );
+
+        // Start objectives
+        this.objectiveManager.start();
     }
 
     setupEventListeners() {
@@ -122,6 +148,8 @@ class MonkeyCraft {
 
         // Update all game systems
         this.dayNightCycle.update(dt, () => this.uiManager.incrementDay());
+        
+        this.objectiveManager.update(dt);
         
         this.entityManager.updateCampfire(dt, this.camera);
         

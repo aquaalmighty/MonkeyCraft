@@ -379,6 +379,7 @@ export class WorldEngine {
                 child.material.metalness = 0;
                 child.material.roughness = 1;
                 child.material.side = THREE.DoubleSide;
+                child.material.needsUpdate = true;
             }
         });
     }

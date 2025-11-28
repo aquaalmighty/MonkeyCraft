@@ -10,6 +10,7 @@ export class EntityManager {
         this.droppedItems = [];
         this.particles = [];
         this.monkeySpawnTimer = 0;
+        this.allowContinuousSpawning = false;
         
         this.campfire = {
             mesh: null,
@@ -60,6 +61,7 @@ export class EntityManager {
                 child.material.metalness = 0;
                 child.material.roughness = 1;
                 child.material.side = THREE.DoubleSide;
+                child.material.needsUpdate = true;
             }
         });
     }
@@ -196,7 +198,7 @@ export class EntityManager {
         const spawnRate = isNight ? 2.0 : 10.0;
 
         this.monkeySpawnTimer += dt;
-        if (this.monkeySpawnTimer >= spawnRate) {
+        if (this.allowContinuousSpawning && this.monkeySpawnTimer >= spawnRate) {
             this.monkeySpawnTimer = 0;
             this.spawnMonkey(playerPos);
         }

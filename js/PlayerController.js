@@ -26,6 +26,27 @@ export class PlayerController {
         this.offHandGroup = null;
         this.playerLight = null;
         
+        // Sway animation tracking
+        this.wasMoving = false;
+        this.swayResetProgress = 0;
+        this.baseHandPos = new THREE.Vector3(0.6, -0.5, -0.8);
+        this.baseOffhandPos = new THREE.Vector3(-0.6, -0.5, -0.8);
+        
+        // Camera lag tracking
+        this.prevCameraQuat = new THREE.Quaternion();
+        this.handLagOffset = new THREE.Vector3();
+        this.offhandLagOffset = new THREE.Vector3();
+        this.maxLagDistance = 2; // Maximum lag distance - DRASTICALLY INCREASED
+        this.lagSmoothness = 0.75; // How quickly to recover from lag
+        
+        // Sway tweening back to base
+        this.handSwayOffset = new THREE.Vector3();
+        this.offhandSwayOffset = new THREE.Vector3();
+        this.tweenProgress = 0;
+        this.isTweening = false;
+        this.handRotationTween = 0;
+        this.offhandRotationTween = 0;
+        
         this.setupPlayerHand();
         this.setupMiningIndicator();
     }
@@ -70,7 +91,7 @@ export class PlayerController {
             group.add(torchGroup);
             
             const handMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(0.2, 0.2, 0.2),
+                new THREE.BoxGeometry(0.25, 0.35, 0.15),
                 new THREE.MeshLambertMaterial({ color: 0xF0C0A0 })
             );
             handMesh.name = 'hand';
@@ -316,14 +337,15 @@ export class PlayerController {
         }
     }
 
-    updateHandVisuals(group, itemId) {
+    updateHandVisuals(group, itemId, isOffhand = false) {
         const isTool = itemId === BLOCKS.SWORD || itemId === BLOCKS.PICKAXE || itemId === BLOCKS.TORCH;
         const isAir = itemId === BLOCKS.AIR;
         
         group.getObjectByName('sword').visible = (itemId === BLOCKS.SWORD);
         group.getObjectByName('pickaxe').visible = (itemId === BLOCKS.PICKAXE);
         group.getObjectByName('torch').visible = (itemId === BLOCKS.TORCH);
-        group.getObjectByName('hand').visible = isAir;
+        // Only show hand mesh for main hand when empty, never for offhand
+        group.getObjectByName('hand').visible = isAir && !isOffhand;
         
         const blockMesh = group.getObjectByName('block');
         if (blockMesh) {
@@ -371,29 +393,164 @@ export class PlayerController {
 
         // Hand animations
         const baseRotX = -Math.PI / 6;
+        const baseHandPosY = -0.5;
+        const baseOffhandPosY = -0.5;
         const now = performance.now();
         
-        if (this.isSwinging) {
-            this.swingTimer -= dt;
-            this.playerHand.rotation.x = baseRotX - Math.sin(this.swingTimer * Math.PI * 4) * 1.0;
-            if (this.swingTimer <= 0) {
-                this.isSwinging = false;
-                this.playerHand.rotation.x = baseRotX;
+        // Calculate movement speed for sway
+        const isMoving = this.moveState.f || this.moveState.b || this.moveState.l || this.moveState.r;
+        
+        // Reset animation timer when movement state changes
+        if (isMoving !== this.wasMoving) {
+            if (isMoving) {
+                // Starting movement - reset sway to beginning
+                this.swayResetProgress = 0;
+                this.movementStartTime = now;
+                this.isTweening = false;
+                this.tweenProgress = 0;
+            } else {
+                // Stopping movement - start smooth tween back to base
+                this.swayResetProgress = 0;
+                this.resetStartTime = now;
+                this.isTweening = true;
+                this.tweenProgress = 0;
+                this.handRotationTween = 0;
+                this.offhandRotationTween = 0;
             }
-        } else if (this.isMining) {
-            this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(now / 100)) * 0.8;
-        } else {
-            this.playerHand.rotation.x = baseRotX;
+            this.wasMoving = isMoving;
         }
         
-        if (this.offHandGroup) {
-            this.offHandGroup.rotation.x = baseRotX + Math.sin(now / 1000) * 0.05;
+        // Handle camera lag effect
+        const currentCameraQuat = this.camera.quaternion;
+        const quatDiff = new THREE.Quaternion().copy(this.prevCameraQuat).invert().multiply(currentCameraQuat);
+        
+        // Convert quaternion diff to a position offset (larger multiplier for more noticeable lag)
+        const lagForce = new THREE.Vector3(
+            Math.sin(quatDiff.y) * 0.4,
+            Math.sin(quatDiff.x) * 0.4,
+            0
+        );
+        
+        // Update lag offsets with damping (less damping = more lag accumulation)
+        this.handLagOffset.add(lagForce);
+        this.offhandLagOffset.add(lagForce);
+        
+        // Clamp lag distance to maximum
+        const handLagDist = this.handLagOffset.length();
+        if (handLagDist > this.maxLagDistance) {
+            this.handLagOffset.multiplyScalar(this.maxLagDistance / handLagDist);
+        }
+        const offhandLagDist = this.offhandLagOffset.length();
+        if (offhandLagDist > this.maxLagDistance) {
+            this.offhandLagOffset.multiplyScalar(this.maxLagDistance / offhandLagDist);
+        }
+        
+        // Smooth recovery towards zero lag (slower recovery = more noticeable lag)
+        this.handLagOffset.multiplyScalar(this.lagSmoothness);
+        this.offhandLagOffset.multiplyScalar(this.lagSmoothness);
+        
+        this.prevCameraQuat.copy(currentCameraQuat);
+        
+        // Handle sway tweening
+        if (this.isTweening) {
+            this.tweenProgress = Math.min(1, this.tweenProgress + dt / 0.3); // 300ms tween
+            const easeProgress = this.tweenProgress * this.tweenProgress * (3 - 2 * this.tweenProgress); // Smoothstep
+            
+            this.handSwayOffset.multiplyScalar(1 - easeProgress);
+            this.offhandSwayOffset.multiplyScalar(1 - easeProgress);
+            this.handRotationTween = easeProgress;
+            this.offhandRotationTween = easeProgress;
+            
+            if (this.tweenProgress >= 1) {
+                this.isTweening = false;
+                this.handSwayOffset.set(0, 0, 0);
+                this.offhandSwayOffset.set(0, 0, 0);
+                this.handRotationTween = 1;
+                this.offhandRotationTween = 1;
+            }
+        }
+        
+        if (isMoving) {
+            // Stop tweening if we start moving
+            this.isTweening = false;
+            this.tweenProgress = 0;
+            
+            // Calculate sway based on time since movement started - FIGURE 8 PATTERN
+            const timeSinceStart = (now - this.movementStartTime) % 1500; // Loop every 1500ms (faster)
+            const t = (timeSinceStart / 1500) * Math.PI * 2; // Normalized time 0 to 2π
+            
+            // Figure-8 pattern using Lissajous curve - REDUCED INTENSITY
+            const swayAmount = Math.sin(t) * 0.03; // Horizontal sway (reduced from 0.05)
+            const bobAmount = Math.sin(t * 2) * 0.015; // Vertical bob (reduced from 0.03)
+            
+            this.handSwayOffset.set(swayAmount, bobAmount, 0);
+            this.offhandSwayOffset.set(-swayAmount, bobAmount, 0);
+            
+            if (this.isSwinging) {
+                this.swingTimer -= dt;
+                this.playerHand.rotation.x = baseRotX - Math.sin(this.swingTimer * Math.PI * 4) * 1.0;
+                this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
+                this.playerHand.position.y = baseHandPosY;
+                if (this.swingTimer <= 0) {
+                    this.isSwinging = false;
+                    this.playerHand.rotation.x = baseRotX;
+                    this.isTweening = true;
+                    this.tweenProgress = 0;
+                }
+            } else if (this.isMining) {
+                this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(now / 100)) * 0.8;
+                this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
+                this.playerHand.position.y = baseHandPosY;
+            } else {
+                this.playerHand.rotation.x = baseRotX;
+                this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
+                this.playerHand.position.y = baseHandPosY + this.handSwayOffset.y;
+            }
+            
+            if (this.offHandGroup) {
+                this.offHandGroup.rotation.x = baseRotX;
+                this.offHandGroup.position.copy(this.baseOffhandPos).add(this.offhandLagOffset).add(this.offhandSwayOffset);
+                this.offHandGroup.position.y = baseOffhandPosY + this.offhandSwayOffset.y;
+            }
+        } else {
+            // Handle animations when not moving
+            if (this.isSwinging) {
+                this.swingTimer -= dt;
+                this.playerHand.rotation.x = baseRotX - Math.sin(this.swingTimer * Math.PI * 4) * 1.0;
+                this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
+                this.playerHand.position.y = baseHandPosY;
+                if (this.swingTimer <= 0) {
+                    this.isSwinging = false;
+                    this.playerHand.rotation.x = baseRotX;
+                    this.isTweening = true;
+                    this.tweenProgress = 0;
+                }
+            } else if (this.isMining) {
+                this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(now / 100)) * 0.8;
+                this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
+                this.playerHand.position.y = baseHandPosY;
+            } else {
+                // Smoothly reset to base position when not moving and not animating
+                // Apply rotation tween
+                this.playerHand.rotation.x = baseRotX + (this.playerHand.rotation.x - baseRotX) * (1 - this.handRotationTween);
+                
+                // Interpolate position back to base (including lag offset and sway tween)
+                this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
+                this.playerHand.position.y = baseHandPosY;
+                
+                if (this.offHandGroup) {
+                    this.offHandGroup.rotation.x = baseRotX + (this.offHandGroup.rotation.x - baseRotX) * (1 - this.offhandRotationTween);
+                    
+                    this.offHandGroup.position.copy(this.baseOffhandPos).add(this.offhandLagOffset).add(this.offhandSwayOffset);
+                    this.offHandGroup.position.y = baseOffhandPosY;
+                }
+            }
         }
 
         // Update hand visuals
         const selectedBlockId = this.uiManager.getSelectedBlockId();
-        this.updateHandVisuals(this.playerHand.children[0], selectedBlockId);
-        this.updateHandVisuals(this.offHandGroup.children[0], this.uiManager.offhandSlot.itemId);
+        this.updateHandVisuals(this.playerHand.children[0], selectedBlockId, false);
+        this.updateHandVisuals(this.offHandGroup.children[0], this.uiManager.offhandSlot.itemId, true);
 
         // Torch light
         if (this.playerLight) {
