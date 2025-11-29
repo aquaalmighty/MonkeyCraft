@@ -291,40 +291,37 @@ export class PlayerController {
 
 
     onKeyEvent(e) {
-
-        const down = e.type === 'keydown';
-
-        if (e.code === 'KeyW') this.moveState.f = down ? 1 : 0;
-
-        if (e.code === 'KeyS') this.moveState.b = down ? 1 : 0;
-
-        if (e.code === 'KeyA') this.moveState.l = down ? 1 : 0;
-
-        if (e.code === 'KeyD') this.moveState.r = down ? 1 : 0;
-
-        if (e.code === 'ShiftLeft') this.moveState.sprint = down;
-
-        if (e.code === 'Space' && down && this.canJump) {
-
-            this.playerVelocity.y = JUMP_FORCE;
-
-            this.canJump = false;
-
-        }
-
-        if (e.code === 'KeyE' && down) {
-
-            this.uiManager.toggleInventory();
-
-        }
-
-        if (down && e.key >= '1' && e.key <= '5') {
-
-            this.uiManager.selectHotbarSlot(parseInt(e.key) - 1);
-
-        }
-
+    const down = e.type === 'keydown';
+    if (e.code === 'KeyW') this.moveState.f = down ? 1 : 0;
+    if (e.code === 'KeyS') this.moveState.b = down ? 1 : 0;
+    if (e.code === 'KeyA') this.moveState.l = down ? 1 : 0;
+    if (e.code === 'KeyD') this.moveState.r = down ? 1 : 0;
+    if (e.code === 'ShiftLeft') this.moveState.sprint = down;
+    if (e.code === 'Space' && down && this.canJump) {
+        this.playerVelocity.y = JUMP_FORCE;
+        this.canJump = false;
     }
+    if (e.code === 'KeyE' && down) {
+        this.uiManager.toggleInventory();
+    }
+    if (down && e.key >= '1' && e.key <= '5') {
+        this.uiManager.selectHotbarSlot(parseInt(e.key) - 1);
+    }
+    
+    // Debug toggles
+    if (e.code === 'KeyL' && down) {
+        // Toggle lighting
+        this.worldEngine.lighting.setEnabled(!this.worldEngine.lighting.enabled);
+        console.log('Lighting:', this.worldEngine.lighting.enabled ? 'ON' : 'OFF');
+        this.worldEngine.updateChunks();
+    }
+    if (e.code === 'KeyO' && down) {
+        // Toggle AO
+        this.worldEngine.ao.setEnabled(!this.worldEngine.ao.enabled);
+        console.log('Ambient Occlusion:', this.worldEngine.ao.enabled ? 'ON' : 'OFF');
+        this.worldEngine.updateChunks();
+    }
+}
 
 
 

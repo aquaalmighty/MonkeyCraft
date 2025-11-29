@@ -85,7 +85,7 @@ class MonkeyCraft {
         // Objective 1: Prepare for nightfall (1 minute timer)
         this.objectiveManager.addObjective(
             'PREPARE FOR NIGHTFALL',
-            30, // 1 minute in seconds
+            600, // 1 minute in seconds
             () => {
                 // When timer completes, start spawning monkeys
                 this.entityManager.allowContinuousSpawning = true;
@@ -149,6 +149,13 @@ class MonkeyCraft {
         // Update all game systems
         this.dayNightCycle.update(dt, () => this.uiManager.incrementDay());
         
+        // Update lighting system (throttled internally)
+        if (this.worldEngine.lighting && this.worldEngine.lighting.enabled) {
+            this.worldEngine.lighting.sunAngle = this.dayNightCycle.getSunAngle();
+            this.worldEngine.lighting.sunColor = this.dayNightCycle.getSunColor();
+            this.worldEngine.lighting.updateLighting(dt);
+        }
+        
         this.objectiveManager.update(dt);
         
         this.entityManager.updateCampfire(dt, this.camera);
@@ -171,6 +178,9 @@ class MonkeyCraft {
         this.entityManager.updateParticles(dt);
         this.playerController.update(dt);
         this.uiManager.updateHunger(dt);
+        
+        // Update chunks
+        this.worldEngine.updateChunks();
         
         if (this.uiManager.checkPlayerDeath(this.controls)) {
             // Player respawned

@@ -17,7 +17,7 @@ export const MAX_HP = 10;
 export const MAX_HUNGER = 10;
 
 // Day/Night cycle
-export const DAY_DURATION = 300;
+export const DAY_DURATION = 900;
 
 // Block types enum
 export const BLOCKS = {

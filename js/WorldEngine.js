@@ -2,9 +2,10 @@
 
 import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_SIZE_CHUNKS, TEXTURE_SIZE, BLOCKS, BLOCK_COLORS, CUBE_FACES } from './GameConstants.js';
 import { AmbientOcclusion } from './AmbientOcclusion.js';
+import { LightingEngine } from './LightingEngine.js';
 
 export class WorldEngine {
-    constructor(scene) {
+        constructor(scene) {
         this.scene = scene;
         this.chunks = {};
         this.materials = [];
@@ -12,6 +13,7 @@ export class WorldEngine {
         this.saplingObjects = [];
         this.saplingModel = null;
         this.ao = new AmbientOcclusion(this);
+        this.lighting = new LightingEngine(this); // ADD THIS
         
         this.initMaterials();
     }
@@ -97,83 +99,92 @@ export class WorldEngine {
         return chunk.data[lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE];
     }
 
-    setWorldBlock(x, y, z, type, onDrop) {
-        if (y < 0 || y >= WORLD_HEIGHT) return;
-        const cx = Math.floor(x / CHUNK_SIZE);
-        const cz = Math.floor(z / CHUNK_SIZE);
-        
-        const key = this.getChunkKey(cx, cz);
-        let chunk = this.chunks[key];
-        if (!chunk) {
-            chunk = this.createChunkData(cx, cz);
-            this.chunks[key] = chunk;
-        }
-
-        const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-        const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-        const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
-        
-        const currentType = chunk.data[idx];
-        chunk.data[idx] = type;
-        chunk.dirty = true;
-        
-        // Handle drops
-        if (type === BLOCKS.AIR && currentType !== BLOCKS.AIR && currentType !== BLOCKS.BEDROCK) {
-            let dropId = currentType;
-            if (currentType === BLOCKS.GRASS) dropId = BLOCKS.DIRT;
-            if (currentType === BLOCKS.LEAVES) {
-                if (Math.random() < 0.2) dropId = BLOCKS.SAPLING;
-                else dropId = null;
-            }
-            if (currentType === BLOCKS.SAPLING) dropId = BLOCKS.SAPLING;
-
-            if (dropId && onDrop) {
-                onDrop(dropId, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
-            }
-            
-            // Remove visual sapling
-            if (currentType === BLOCKS.SAPLING) {
-                const sIdx = this.saplingObjects.findIndex(s => 
-                    Math.floor(s.pos.x) === x && 
-                    Math.floor(s.pos.y) === y && 
-                    Math.floor(s.pos.z) === z
-                );
-                if (sIdx !== -1) {
-                    this.scene.remove(this.saplingObjects[sIdx].mesh);
-                    this.saplingObjects[sIdx].bar.remove();
-                    this.saplingObjects.splice(sIdx, 1);
-                }
-            }
-        }
-        
-        // Add visual sapling
-        if (type === BLOCKS.SAPLING && this.saplingModel) {
-            const sm = this.saplingModel.clone();
-            sm.position.set(x + 0.5, y, z + 0.5);
-            this.scene.add(sm);
-            
-            const bar = document.createElement('div');
-            bar.className = 'world-health-bar';
-            bar.style.width = '40px';
-            bar.style.height = '6px';
-            bar.style.background = '#555';
-            bar.innerHTML = '<div class="world-health-fill" style="background-color: #aaa; width: 0%;"></div>';
-            document.getElementById('world-labels').appendChild(bar);
-            
-            this.saplingObjects.push({
-                mesh: sm,
-                pos: new THREE.Vector3(x + 0.5, y, z + 0.5),
-                timer: 0,
-                bar: bar,
-                fill: bar.querySelector('.world-health-fill')
-            });
-        }
-
-        if (lx === 0) this.markChunkDirty(cx - 1, cz);
-        if (lx === CHUNK_SIZE - 1) this.markChunkDirty(cx + 1, cz);
-        if (lz === 0) this.markChunkDirty(cx, cz - 1);
-        if (lz === CHUNK_SIZE - 1) this.markChunkDirty(cx, cz + 1);
+   setWorldBlock(x, y, z, type, onDrop) {
+    if (y < 0 || y >= WORLD_HEIGHT) return;
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    
+    const key = this.getChunkKey(cx, cz);
+    let chunk = this.chunks[key];
+    if (!chunk) {
+        chunk = this.createChunkData(cx, cz);
+        this.chunks[key] = chunk;
     }
+
+    const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+    
+    const currentType = chunk.data[idx];
+    chunk.data[idx] = type;
+    chunk.dirty = true;
+    
+    // Handle lighting updates (OPTIMIZED - minimal immediate work)
+    if (this.lighting && this.lighting.enabled) {
+        if (type === BLOCKS.TORCH) {
+            this.lighting.addTorchLight(x, y, z);
+        } else if (type === BLOCKS.AIR && currentType !== BLOCKS.AIR) {
+            this.lighting.removeLight(x, y, z);
+        } else if (type !== BLOCKS.AIR) {
+            this.lighting.removeLight(x, y, z);
+        }
+    }
+    
+    // Handle drops
+    if (type === BLOCKS.AIR && currentType !== BLOCKS.AIR && currentType !== BLOCKS.BEDROCK) {
+        let dropId = currentType;
+        if (currentType === BLOCKS.GRASS) dropId = BLOCKS.DIRT;
+        if (currentType === BLOCKS.LEAVES) {
+            if (Math.random() < 0.2) dropId = BLOCKS.SAPLING;
+            else dropId = null;
+        }
+        if (currentType === BLOCKS.SAPLING) dropId = BLOCKS.SAPLING;
+
+        if (dropId && onDrop) {
+            onDrop(dropId, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
+        }
+        
+        if (currentType === BLOCKS.SAPLING) {
+            const sIdx = this.saplingObjects.findIndex(s => 
+                Math.floor(s.pos.x) === x && 
+                Math.floor(s.pos.y) === y && 
+                Math.floor(s.pos.z) === z
+            );
+            if (sIdx !== -1) {
+                this.scene.remove(this.saplingObjects[sIdx].mesh);
+                this.saplingObjects[sIdx].bar.remove();
+                this.saplingObjects.splice(sIdx, 1);
+            }
+        }
+    }
+    
+    if (type === BLOCKS.SAPLING && this.saplingModel) {
+        const sm = this.saplingModel.clone();
+        sm.position.set(x + 0.5, y, z + 0.5);
+        this.scene.add(sm);
+        
+        const bar = document.createElement('div');
+        bar.className = 'world-health-bar';
+        bar.style.width = '40px';
+        bar.style.height = '6px';
+        bar.style.background = '#555';
+        bar.innerHTML = '<div class="world-health-fill" style="background-color: #aaa; width: 0%;"></div>';
+        document.getElementById('world-labels').appendChild(bar);
+        
+        this.saplingObjects.push({
+            mesh: sm,
+            pos: new THREE.Vector3(x + 0.5, y, z + 0.5),
+            timer: 0,
+            bar: bar,
+            fill: bar.querySelector('.world-health-fill')
+        });
+    }
+
+    if (lx === 0) this.markChunkDirty(cx - 1, cz);
+    if (lx === CHUNK_SIZE - 1) this.markChunkDirty(cx + 1, cz);
+    if (lz === 0) this.markChunkDirty(cx, cz - 1);
+    if (lz === CHUNK_SIZE - 1) this.markChunkDirty(cx, cz + 1);
+}
 
     markChunkDirty(cx, cz) {
         const c = this.chunks[this.getChunkKey(cx, cz)];
@@ -314,498 +325,95 @@ export class WorldEngine {
             return t === BLOCKS.AIR || t === BLOCKS.SAPLING;
         };
 
-
-        const pushFace = (matIdx, wx, y, wz, faceKey) => {
-            const verts = matVerts[matIdx];
-            const uvs = matUVs[matIdx];
-            const colors = matColors[matIdx];
-            const inds = matIndices[matIdx];
-            const currentCount = matCounts[matIdx];
-            const face = CUBE_FACES[faceKey];
+        const shouldRenderFace = (blockType, adjacentX, adjacentY, adjacentZ) => {
+            const adjacent = this.getWorldBlock(adjacentX, adjacentY, adjacentZ);
             
-            // Get AO values for this face
-            const aoValues = this.ao.getFaceAO(wx, y, wz, faceKey);
+            // Always render if adjacent is air or sapling
+            if (adjacent === BLOCKS.AIR || adjacent === BLOCKS.SAPLING) return true;
             
-            // Convert AO to brightness
-            const brightness = aoValues.map(ao => this.ao.aoToBrightness(ao));
-            
-            // Add vertices
-            for (let i = 0; i < face.length; i += 3) {
-                verts.push(wx + face[i], y + face[i + 1], wz + face[i + 2]);
+            // For leaves, render faces even when adjacent to other leaves
+            if (blockType === BLOCKS.LEAVES) {
+                return adjacent !== BLOCKS.LEAVES; // Only skip if both are leaves
             }
             
-            // Add UVs
-            uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
-            
-            // Map AO values to actual vertex positions
-            // AO returns corners in order based on face's local coordinate system
-            const ao0 = brightness[0];
-            const ao1 = brightness[1];
-            const ao2 = brightness[2];
-            const ao3 = brightness[3];
-
-
-            // Map AO to vertices based on how getFaceAO samples each face
-            if (faceKey === '+y') {
-                // Top face - keep as is
-                colors.push(ao0, ao0, ao0, ao1, ao1, ao1, ao3, ao3, ao3, ao2, ao2, ao2);
-            } else if (faceKey === '-y') {
-                // Bottom face - keep as is
-                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao0, ao0, ao0, ao1, ao1, ao1);
-            } else if (faceKey === '+x') {
-                // Right face: CUBE_FACES = [1,0,1, 1,0,0, 1,1,1, 1,1,0]
-                // getFaceAO samples: [(+y,-z), (+y,+z), (-y,+z), (-y,-z)]
-                // That's: [TL, TR, BR, BL] where:
-                //   TL = top-back (y+1, z-1)  = ao0
-                //   TR = top-front (y+1, z+1) = ao1
-                //   BR = bottom-front (y-1, z+1) = ao2
-                //   BL = bottom-back (y-1, z-1) = ao3
-                // Vertices in CUBE_FACES order:
-                //   v0 = (1,0,1) = bottom-front = ao2
-                //   v1 = (1,0,0) = bottom-back = ao3
-                //   v2 = (1,1,1) = top-front = ao1
-                //   v3 = (1,1,0) = top-back = ao0
-                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
-                
-            } else if (faceKey === '-x') {
-                // Left face: CUBE_FACES = [0,0,0, 0,0,1, 0,1,0, 0,1,1]
-                // getFaceAO samples: [(+y,+z), (+y,-z), (-y,-z), (-y,+z)]
-                // That's: [TL, TR, BR, BL] where:
-                //   TL = top-front (y+1, z+1) = ao0
-                //   TR = top-back (y+1, z-1) = ao1
-                //   BR = bottom-back (y-1, z-1) = ao2
-                //   BL = bottom-front (y-1, z+1) = ao3
-                // Vertices in CUBE_FACES order:
-                //   v0 = (0,0,0) = bottom-back = ao2
-                //   v1 = (0,0,1) = bottom-front = ao3
-                //   v2 = (0,1,0) = top-back = ao1
-                //   v3 = (0,1,1) = top-front = ao0
-                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
-                
-            } else if (faceKey === '+z') {
-                // Front face: CUBE_FACES = [0,0,1, 1,0,1, 0,1,1, 1,1,1]
-                // getFaceAO samples: [(+y,+x), (+y,-x), (-y,-x), (-y,+x)]
-                // That's: [TL, TR, BR, BL] where:
-                //   TL = top-right (y+1, x+1) = ao0
-                //   TR = top-left (y+1, x-1) = ao1
-                //   BR = bottom-left (y-1, x-1) = ao2
-                //   BL = bottom-right (y-1, x+1) = ao3
-                // Vertices in CUBE_FACES order:
-                //   v0 = (0,0,1) = bottom-left = ao2
-                //   v1 = (1,0,1) = bottom-right = ao3
-                //   v2 = (0,1,1) = top-left = ao1
-                //   v3 = (1,1,1) = top-right = ao0
-                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
-                
-            } else if (faceKey === '-z') {
-                // Back face: CUBE_FACES = [1,0,0, 0,0,0, 1,1,0, 0,1,0]
-                // getFaceAO samples: [(+y,-x), (+y,+x), (-y,+x), (-y,-x)]
-                // That's: [TL, TR, BR, BL] where:
-                //   TL = top-left (y+1, x-1) = ao0
-                //   TR = top-right (y+1, x+1) = ao1
-                //   BR = bottom-right (y-1, x+1) = ao2
-                //   BL = bottom-left (y-1, x-1) = ao3
-                // Vertices in CUBE_FACES order:
-                //   v0 = (1,0,0) = bottom-right = ao2
-                //   v1 = (0,0,0) = bottom-left = ao3
-                //   v2 = (1,1,0) = top-right = ao1
-                //   v3 = (0,1,0) = top-left = ao0
-                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
-            }
-
-            /**
-
-            // Map AO to vertices based on how getFaceAO samples each face
-            if (faceKey === '+y') {
-                colors.push(ao0, ao0, ao0, ao1, ao1, ao1, ao3, ao3, ao3, ao2, ao2, ao2);
-            } else if (faceKey === '-y') {
-                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao0, ao0, ao0, ao1, ao1, ao1);
-            } else if (faceKey === '+x') {
-                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao1, ao1, ao1, ao0, ao0, ao0);
-            } else if (faceKey === '-x') {
-                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
-            } else if (faceKey === '+z') {
-                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao1, ao1, ao1, ao0, ao0, ao0);
-            } else if (faceKey === '-z') {
-                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao0, ao0, ao0, ao1, ao1, ao1);
-            }
-
-            **/
-            
-            // CRITICAL: Choose quad subdivision based on AO values to avoid anisotropy
-            // From the paper: if(ao0 + ao2 > ao1 + ao3) flip the quad
-            // This ensures we subdivide along the diagonal with less AO variation
-            if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
-                // Use diagonal v1-v2 (flipped quad)
-                inds.push(
-                    currentCount, currentCount + 1, currentCount + 2,
-                    currentCount + 2, currentCount + 1, currentCount + 3
-                );
-            } else {
-                // Use diagonal v0-v3 (normal quad)
-                inds.push(
-                    currentCount, currentCount + 1, currentCount + 3,
-                    currentCount, currentCount + 3, currentCount + 2
-                );
-            }
-            
-            matCounts[matIdx] += 4;
+            // For other blocks, don't render if adjacent block is solid
+            return false;
         };
 
-
-        /** 
-
         const pushFace = (matIdx, wx, y, wz, faceKey) => {
-            const verts = matVerts[matIdx];
-            const uvs = matUVs[matIdx];
-            const colors = matColors[matIdx];
-            const inds = matIndices[matIdx];
-            const currentCount = matCounts[matIdx];
-            const face = CUBE_FACES[faceKey];
-            
-            // Get AO values for this face
-            const aoValues = this.ao.getFaceAO(wx, y, wz, faceKey);
-            
-            // Convert AO to brightness
-            const brightness = aoValues.map(ao => this.ao.aoToBrightness(ao));
-            
-            // Add vertices
-            for (let i = 0; i < face.length; i += 3) {
-                verts.push(wx + face[i], y + face[i + 1], wz + face[i + 2]);
+        const verts = matVerts[matIdx];
+        const uvs = matUVs[matIdx];
+        const colors = matColors[matIdx];
+        const inds = matIndices[matIdx];
+        const currentCount = matCounts[matIdx];
+        const face = CUBE_FACES[faceKey];
+        
+        // Get AO values for this face (YOUR PERFECTED AO)
+        const aoValues = this.ao.getFaceAO(wx, y, wz, faceKey);
+        
+        // Convert AO to brightness (YOUR PERFECTED AO)
+        const aoBrightness = aoValues.map(ao => this.ao.aoToBrightness(ao));
+        
+        // Get lighting brightness at block center (SAFE)
+        let lightBrightness = 0.8; // Default brightness if lighting not available
+        if (this.lighting) {
+            try {
+                lightBrightness = this.lighting.getBrightnessAt(wx, y, wz);
+            } catch (error) {
+                console.warn('Lighting brightness error:', error);
+                lightBrightness = 0.8;
             }
-            
-            // Add UVs
-            uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
-            
-            // Add vertex colors for AO (RGB all same for grayscale)
-            // AO returns [corner0, corner1, corner2, corner3] based on the face's sampling pattern
-            const ao0 = brightness[0];
-            const ao1 = brightness[1];
-            const ao2 = brightness[2];
-            const ao3 = brightness[3];
+        }
+        
+        // Combine AO with lighting: AO modulates the lighting
+        const finalBrightness = aoBrightness.map(ao => {
+            return ao * (0.2 + lightBrightness * 0.8);
+        });
+        
+        // Add vertices
+        for (let i = 0; i < face.length; i += 3) {
+            verts.push(wx + face[i], y + face[i + 1], wz + face[i + 2]);
+        }
+        
+        // Add UVs
+        uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
+        
+        const ao0 = finalBrightness[0];
+        const ao1 = finalBrightness[1];
+        const ao2 = finalBrightness[2];
+        const ao3 = finalBrightness[3];
 
-            // Map AO corners to CUBE_FACES vertices by matching the sampling positions
-            if (faceKey === '+y') {
-                // getFaceAO samples: [(-x,+z), (+x,+z), (+x,-z), (-x,-z)]
-                // CUBE_FACES: [(0,1,1), (1,1,1), (0,1,0), (1,1,0)]
-                // v0=(0,z=1)=ao0, v1=(1,z=1)=ao1, v2=(0,z=0)=ao3, v3=(1,z=0)=ao2
-                colors.push(ao0, ao0, ao0); // v0
-                colors.push(ao1, ao1, ao1); // v1
-                colors.push(ao3, ao3, ao3); // v2
-                colors.push(ao2, ao2, ao2); // v3
-            } else if (faceKey === '-y') {
-                // getFaceAO samples: [(-x,+z), (+x,+z), (+x,-z), (-x,-z)]
-                // CUBE_FACES: [(0,0,0), (1,0,0), (0,0,1), (1,0,1)]
-                // v0=(0,z=0)=ao3, v1=(1,z=0)=ao2, v2=(0,z=1)=ao0, v3=(1,z=1)=ao1
-                colors.push(ao3, ao3, ao3); // v0
-                colors.push(ao2, ao2, ao2); // v1
-                colors.push(ao0, ao0, ao0); // v2
-                colors.push(ao1, ao1, ao1); // v3
-            } else if (faceKey === '+x') {
-                // getFaceAO samples: [(+y,-z), (+y,+z), (-y,+z), (-y,-z)]
-                // CUBE_FACES: [(1,0,1), (1,0,0), (1,1,1), (1,1,0)]
-                // v0=(y=0,z=1)=ao3, v1=(y=0,z=0)=ao2, v2=(y=1,z=1)=ao1, v3=(y=1,z=0)=ao0
-                colors.push(ao3, ao3, ao3); // v0
-                colors.push(ao2, ao2, ao2); // v1
-                colors.push(ao1, ao1, ao1); // v2
-                colors.push(ao0, ao0, ao0); // v3
-            } else if (faceKey === '-x') {
-                // getFaceAO samples: [(+y,+z), (+y,-z), (-y,-z), (-y,+z)]
-                // CUBE_FACES: [(0,0,0), (0,0,1), (0,1,0), (0,1,1)]
-                // v0=(y=0,z=0)=ao2, v1=(y=0,z=1)=ao3, v2=(y=1,z=0)=ao1, v3=(y=1,z=1)=ao0
-                colors.push(ao2, ao2, ao2); // v0
-                colors.push(ao3, ao3, ao3); // v1
-                colors.push(ao1, ao1, ao1); // v2
-                colors.push(ao0, ao0, ao0); // v3
-            } else if (faceKey === '+z') {
-                // getFaceAO samples: [(+y,+x), (+y,-x), (-y,-x), (-y,+x)]
-                // CUBE_FACES: [(0,0,1), (1,0,1), (0,1,1), (1,1,1)]
-                // v0=(x=0,y=0)=ao3, v1=(x=1,y=0)=ao2, v2=(x=0,y=1)=ao1, v3=(x=1,y=1)=ao0
-                colors.push(ao3, ao3, ao3); // v0
-                colors.push(ao2, ao2, ao2); // v1
-                colors.push(ao1, ao1, ao1); // v2
-                colors.push(ao0, ao0, ao0); // v3
-            } else if (faceKey === '-z') {
-                // getFaceAO samples: [(+y,-x), (+y,+x), (-y,+x), (-y,-x)]
-                // CUBE_FACES: [(1,0,0), (0,0,0), (1,1,0), (0,1,0)]
-                // v0=(x=1,y=0)=ao2, v1=(x=0,y=0)=ao3, v2=(x=1,y=1)=ao0, v3=(x=0,y=1)=ao1
-                colors.push(ao2, ao2, ao2); // v0
-                colors.push(ao3, ao3, ao3); // v1
-                colors.push(ao0, ao0, ao0); // v2
-                colors.push(ao1, ao1, ao1); // v3
-            }
-
-            **/
-
-            /** 
-            // FIX: Assign colors based on each specific face direction
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-x') {
-                colors.push(b_bl, b_bl, b_bl); // v0 - SAME as +x
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '+z') {
-                colors.push(b_br, b_br, b_br); // v0 - FLIPPED
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            } else if (faceKey === '-z') {
-                colors.push(b_bl, b_bl, b_bl); // v0 - same as +x/-x
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            }
-
-            **/
-
-            /**
-
-            // FIX: Assign colors based on each specific face direction
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-x') {
-                colors.push(b_bl, b_bl, b_bl); // v0 - SAME as +x (not opposite)
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '+z') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-z') {
-                colors.push(b_br, b_br, b_br); // v0 - opposite of +z
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            }
-
-            **/
-
-            /**
-
-            // FIX: Assign colors based on each specific face direction
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-x') {
-                colors.push(b_br, b_br, b_br); // v0 - opposite of +x
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            } else if (faceKey === '+z') {
-                colors.push(b_bl, b_bl, b_bl); // v0 - CHANGED to match +x pattern
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-z') {
-                colors.push(b_br, b_br, b_br); // v0 - opposite of +z
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            }
-
-            **/
-
-            /** 
-
-            // FIX: Assign colors based on each specific face direction
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-x') {
-                colors.push(b_bl, b_bl, b_bl); // v0 - SWAPPED to match +x
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '+z') {
-                colors.push(b_br, b_br, b_br); // v0
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            } else if (faceKey === '-z') {
-                colors.push(b_br, b_br, b_br); // v0 - SWAPPED to match +z
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            }
-
-            **/
-
-            /**
-
-            // FIX: Assign colors based on each specific face direction
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else if (faceKey === '-x') {
-                colors.push(b_br, b_br, b_br); // v0
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            } else if (faceKey === '+z') {
-                colors.push(b_br, b_br, b_br); // v0
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            } else if (faceKey === '-z') {
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            }
-
-            **/
-
-
-            /**
-
-            // FIX: Assign colors based on actual face vertex layout
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x' || faceKey === '-x') {
-                // X-axis Faces: Swapped vertical order
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else {
-                // Z-axis Faces: Swapped both vertical AND horizontal
-                colors.push(b_br, b_br, b_br); // v0
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2
-                colors.push(b_tl, b_tl, b_tl); // v3
-            }
-
-            **/
-
-            /**
-            // FIX: Assign colors based on actual face vertex layout
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else {
-                // All Side Faces (X and Z): Same swapped order
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            }
-            **/
-
-            /**
-
-            // FIX: Assign colors based on actual face vertex layout
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else if (faceKey === '+x' || faceKey === '-x') {
-                // X-axis Faces: Different winding
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            } else {
-                // Z-axis Faces (+z/-z): Need mirrored horizontal order
-                colors.push(b_br, b_br, b_br); // v0 - swap BR/BL
-                colors.push(b_bl, b_bl, b_bl); // v1
-                colors.push(b_tr, b_tr, b_tr); // v2 - swap TR/TL
-                colors.push(b_tl, b_tl, b_tl); // v3
-            }
-            **/
-
-            /** 
-            // FIX: Check face direction to apply colors to the correct vertices
-            if (faceKey === '+y' || faceKey === '-y') {
-                // Top & Bottom Faces: Standard Order (TL, TR, BL, BR)
-                colors.push(b_tl, b_tl, b_tl); // v0
-                colors.push(b_tr, b_tr, b_tr); // v1
-                colors.push(b_bl, b_bl, b_bl); // v2
-                colors.push(b_br, b_br, b_br); // v3
-            } else {
-                // Side Faces: Swapped Order (BL, BR, TL, TR)
-                // This aligns the top brightness values with the top vertices
-                colors.push(b_bl, b_bl, b_bl); // v0
-                colors.push(b_br, b_br, b_br); // v1
-                colors.push(b_tl, b_tl, b_tl); // v2
-                colors.push(b_tr, b_tr, b_tr); // v3
-            }
-            **/
-            
-            /** 
-
-            // NEW, CORRECTED CODE
-            // Add indices - check if we need to flip quad to avoid artifacts
-            if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
-                // Diagonal TL-BR is darker. Use the *other* diagonal (TR-BL).
-                // (v0, v1, v2) and (v2, v1, v3)
-                inds.push(currentCount, currentCount + 1, currentCount + 2, currentCount + 2, currentCount + 1, currentCount + 3);
-            } else {
-                // Diagonal TR-BL is darker. Use the *other* diagonal (TL-BR).
-                // (v0, v1, v3) and (v0, v3, v2)
-                // This is the line that fixes the Z-fighting:
-                inds.push(currentCount, currentCount + 1, currentCount + 3, currentCount, currentCount + 3, currentCount + 2);
-            }
-            
-            matCounts[matIdx] += 4;
-        };
-
-        **/
-
+        // YOUR PERFECTED AO VERTEX MAPPING (unchanged)
+        if (faceKey === '+y') {
+            colors.push(ao0, ao0, ao0, ao1, ao1, ao1, ao3, ao3, ao3, ao2, ao2, ao2);
+        } else if (faceKey === '-y') {
+            colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao0, ao0, ao0, ao1, ao1, ao1);
+        } else if (faceKey === '+x') {
+            colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+        } else if (faceKey === '-x') {
+            colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+        } else if (faceKey === '+z') {
+            colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+        } else if (faceKey === '-z') {
+            colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+        }
+        
+        // YOUR PERFECTED AO QUAD FLIPPING (unchanged)
+        if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
+            inds.push(
+                currentCount, currentCount + 1, currentCount + 2,
+                currentCount + 2, currentCount + 1, currentCount + 3
+            );
+        } else {
+            inds.push(
+                currentCount, currentCount + 1, currentCount + 3,
+                currentCount, currentCount + 3, currentCount + 2
+            );
+        }
+        
+        matCounts[matIdx] += 4;
+    };
+        
         for (let y = 0; y < WORLD_HEIGHT; y++) {
             for (let z = 0; z < CHUNK_SIZE; z++) {
                 for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -818,13 +426,13 @@ export class WorldEngine {
 
                     const wx = startX + x;
                     const wz = startZ + z;
-                    
-                    if (isTransparent(wx + 1, y, wz)) pushFace(matIdx, wx, y, wz, '+x');
-                    if (isTransparent(wx - 1, y, wz)) pushFace(matIdx, wx, y, wz, '-x');
-                    if (isTransparent(wx, y + 1, wz)) pushFace(matIdx, wx, y, wz, '+y');
-                    if (isTransparent(wx, y - 1, wz)) pushFace(matIdx, wx, y, wz, '-y');
-                    if (isTransparent(wx, y, wz + 1)) pushFace(matIdx, wx, y, wz, '+z');
-                    if (isTransparent(wx, y, wz - 1)) pushFace(matIdx, wx, y, wz, '-z');
+
+                    if (shouldRenderFace(type, wx + 1, y, wz)) pushFace(matIdx, wx, y, wz, '+x');
+                    if (shouldRenderFace(type, wx - 1, y, wz)) pushFace(matIdx, wx, y, wz, '-x');
+                    if (shouldRenderFace(type, wx, y + 1, wz)) pushFace(matIdx, wx, y, wz, '+y');
+                    if (shouldRenderFace(type, wx, y - 1, wz)) pushFace(matIdx, wx, y, wz, '-y');
+                    if (shouldRenderFace(type, wx, y, wz + 1)) pushFace(matIdx, wx, y, wz, '+z');
+                    if (shouldRenderFace(type, wx, y, wz - 1)) pushFace(matIdx, wx, y, wz, '-z');
                 }
             }
         }
@@ -864,6 +472,7 @@ export class WorldEngine {
         this.scene.add(chunk.mesh);
     }
 
+    // Add to generateWorld() method at the end:
     generateWorld() {
         for (let x = -WORLD_SIZE_CHUNKS / 2; x < WORLD_SIZE_CHUNKS / 2; x++) {
             for (let z = -WORLD_SIZE_CHUNKS / 2; z < WORLD_SIZE_CHUNKS / 2; z++) {
@@ -871,6 +480,7 @@ export class WorldEngine {
                 this.chunks[this.getChunkKey(x, z)] = c;
             }
         }
+        this.lighting.initializeLighting(); // ADD THIS
         this.updateChunks();
     }
 

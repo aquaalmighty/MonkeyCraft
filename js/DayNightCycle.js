@@ -61,4 +61,30 @@ export class DayNightCycle {
     isNight() {
         return this.gameTime > DAY_DURATION * 0.75 || this.gameTime < DAY_DURATION * 0.25;
     }
+
+    getSunAngle() {
+        const timeFraction = this.gameTime / DAY_DURATION;
+        return (timeFraction * Math.PI * 2) - Math.PI / 2;
+    }
+
+    getSunColor() {
+        const sunAngle = this.getSunAngle();
+        const sunY = Math.sin(sunAngle);
+        
+        if (sunY > 0) {
+            // Day colors
+            return {
+                r: 1.0,
+                g: 0.95 + sunY * 0.05,
+                b: 0.8 + sunY * 0.2
+            };
+        } else {
+            // Night colors (moon light)
+            return {
+                r: 0.3,
+                g: 0.3,
+                b: 0.5
+            };
+        }
+    }
 }
