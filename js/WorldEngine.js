@@ -1,6 +1,7 @@
-// WorldEngine.js - Chunk generation, block management, and mesh generation
+// WorldEngine.js - Chunk generation, block management, and mesh generation with Ambient Occlusion
 
 import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_SIZE_CHUNKS, TEXTURE_SIZE, BLOCKS, BLOCK_COLORS, CUBE_FACES } from './GameConstants.js';
+import { AmbientOcclusion } from './AmbientOcclusion.js';
 
 export class WorldEngine {
     constructor(scene) {
@@ -10,6 +11,7 @@ export class WorldEngine {
         this.matMap = {};
         this.saplingObjects = [];
         this.saplingModel = null;
+        this.ao = new AmbientOcclusion(this);
         
         this.initMaterials();
     }
@@ -37,7 +39,8 @@ export class WorldEngine {
             map: tex,
             side: isLeaves ? THREE.DoubleSide : THREE.FrontSide,
             transparent: isLeaves,
-            opacity: isLeaves ? 0.8 : 1
+            opacity: isLeaves ? 0.8 : 1,
+            vertexColors: true // Enable vertex colors for AO
         });
     }
 
@@ -265,12 +268,14 @@ export class WorldEngine {
         const matVerts = {};
         const matUVs = {};
         const matIndices = {};
+        const matColors = {};
         const matCounts = {};
         
         for (let m = 0; m < this.materials.length; m++) {
             matVerts[m] = [];
             matUVs[m] = [];
             matIndices[m] = [];
+            matColors[m] = [];
             matCounts[m] = 0;
         }
 
@@ -286,16 +291,60 @@ export class WorldEngine {
         const pushFace = (matIdx, wx, y, wz, faceKey) => {
             const verts = matVerts[matIdx];
             const uvs = matUVs[matIdx];
+            const colors = matColors[matIdx];
             const inds = matIndices[matIdx];
             const currentCount = matCounts[matIdx];
             const face = CUBE_FACES[faceKey];
             
+            // Get AO values for this face
+            const aoValues = this.ao.getFaceAO(wx, y, wz, faceKey);
+            
+            // Convert AO to brightness
+            const brightness = aoValues.map(ao => this.ao.aoToBrightness(ao));
+            
+            // Add vertices
             for (let i = 0; i < face.length; i += 3) {
                 verts.push(wx + face[i], y + face[i + 1], wz + face[i + 2]);
             }
             
+            // Add UVs
             uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
-            inds.push(currentCount, currentCount + 1, currentCount + 2, currentCount + 2, currentCount + 1, currentCount + 3);
+            
+            // Add vertex colors for AO (RGB all same for grayscale)
+            const b_tl = brightness[0]; // TopLeft
+            const b_tr = brightness[1]; // TopRight
+            const b_br = brightness[2]; // BottomRight
+            const b_bl = brightness[3]; // BottomLeft
+
+            // FIX: Check face direction to apply colors to the correct vertices
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order (TL, TR, BL, BR)
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else {
+                // Side Faces: Swapped Order (BL, BR, TL, TR)
+                // This aligns the top brightness values with the top vertices
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            }
+            
+            // NEW, CORRECTED CODE
+            // Add indices - check if we need to flip quad to avoid artifacts
+            if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
+                // Diagonal TL-BR is darker. Use the *other* diagonal (TR-BL).
+                // (v0, v1, v2) and (v2, v1, v3)
+                inds.push(currentCount, currentCount + 1, currentCount + 2, currentCount + 2, currentCount + 1, currentCount + 3);
+            } else {
+                // Diagonal TR-BL is darker. Use the *other* diagonal (TL-BR).
+                // (v0, v1, v3) and (v0, v3, v2)
+                // This is the line that fixes the Z-fighting:
+                inds.push(currentCount, currentCount + 1, currentCount + 3, currentCount, currentCount + 3, currentCount + 2);
+            }
+            
             matCounts[matIdx] += 4;
         };
 
@@ -325,6 +374,7 @@ export class WorldEngine {
         const geometry = new THREE.BufferGeometry();
         const allVerts = [];
         const allUVs = [];
+        const allColors = [];
         const allIndices = [];
         let vertOffset = 0;
         
@@ -335,6 +385,7 @@ export class WorldEngine {
             geometry.addGroup(allIndices.length, count, m);
             allVerts.push(...matVerts[m]);
             allUVs.push(...matUVs[m]);
+            allColors.push(...matColors[m]);
             
             const offset = vertOffset / 3;
             for (let i = 0; i < matIndices[m].length; i++) {
@@ -347,6 +398,7 @@ export class WorldEngine {
         
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(allVerts, 3));
         geometry.setAttribute('uv', new THREE.Float32BufferAttribute(allUVs, 2));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(allColors, 3));
         geometry.setIndex(allIndices);
         geometry.computeVertexNormals();
 
