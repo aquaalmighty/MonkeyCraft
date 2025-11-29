@@ -16,9 +16,9 @@ export class AmbientOcclusion {
 
     /**
      * Calculate vertex AO for a corner of a face
-     * @param {number} side1 - First adjacent block
-     * @param {number} side2 - Second adjacent block  
-     * @param {number} corner - Diagonal corner block
+     * @param {number} side1 - First adjacent block (true if solid)
+     * @param {number} side2 - Second adjacent block (true if solid)
+     * @param {number} corner - Diagonal corner block (true if solid)
      * @returns {number} AO value from 0 (darkest) to 3 (brightest)
      */
     vertexAO(side1, side2, corner) {
@@ -31,162 +31,90 @@ export class AmbientOcclusion {
     /**
      * Get AO values for all 4 corners of a block face
      * Returns [topLeft, topRight, bottomRight, bottomLeft] AO values
+     *
+     * This logic is now a direct translation of the C++ example's
+     * face_normal and ao_offset arrays.
      */
     getFaceAO(x, y, z, face) {
         let corners;
+        let s = (x, y, z) => this.isSolid(x, y, z);
 
         switch(face) {
-            case '+y': // Top face (Correct in original)
+            case '+y': // Top face
                 corners = [
-                    // Top-left corner
-                    this.vertexAO(
-                        this.isSolid(x-1, y+1, z),   // left
-                        this.isSolid(x, y+1, z+1),   // back
-                        this.isSolid(x-1, y+1, z+1)  // diagonal
-                    ),
-                    // Top-right corner
-                    this.vertexAO(
-                        this.isSolid(x+1, y+1, z),   // right
-                        this.isSolid(x, y+1, z+1),   // back
-                        this.isSolid(x+1, y+1, z+1)  // diagonal
-                    ),
-                    // Bottom-right corner
-                    this.vertexAO(
-                        this.isSolid(x+1, y+1, z),   // right
-                        this.isSolid(x, y+1, z-1),   // front
-                        this.isSolid(x+1, y+1, z-1)  // diagonal
-                    ),
-                    // Bottom-left corner
-                    this.vertexAO(
-                        this.isSolid(x-1, y+1, z),   // left
-                        this.isSolid(x, y+1, z-1),   // front
-                        this.isSolid(x-1, y+1, z-1)  // diagonal
-                    )
+                    // Top-left (v3 in C++)
+                    this.vertexAO(s(x, y+1, z+1), s(x-1, y+1, z), s(x-1, y+1, z+1)),
+                    // Top-right (v2 in C++)
+                    this.vertexAO(s(x+1, y+1, z), s(x, y+1, z+1), s(x+1, y+1, z+1)),
+                    // Bottom-right (v1 in C++)
+                    this.vertexAO(s(x, y+1, z-1), s(x+1, y+1, z), s(x+1, y+1, z-1)),
+                    // Bottom-left (v0 in C++)
+                    this.vertexAO(s(x-1, y+1, z), s(x, y+1, z-1), s(x-1, y+1, z-1))
                 ];
                 break;
 
-            case '-y': // Bottom face (Correct in original)
+            case '-y': // Bottom face
                 corners = [
-                    this.vertexAO(
-                        this.isSolid(x-1, y-1, z),
-                        this.isSolid(x, y-1, z-1),
-                        this.isSolid(x-1, y-1, z-1)
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x+1, y-1, z),
-                        this.isSolid(x, y-1, z-1),
-                        this.isSolid(x+1, y-1, z-1)
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x+1, y-1, z),
-                        this.isSolid(x, y-1, z+1),
-                        this.isSolid(x+1, y-1, z+1)
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x-1, y-1, z),
-                        this.isSolid(x, y-1, z+1),
-                        this.isSolid(x-1, y-1, z+1)
-                    )
+                    // Top-left (v3 in C++)
+                    this.vertexAO(s(x-1, y-1, z), s(x, y-1, z+1), s(x-1, y-1, z+1)),
+                    // Top-right (v2 in C++)
+                    this.vertexAO(s(x, y-1, z+1), s(x+1, y-1, z), s(x+1, y-1, z+1)),
+                    // Bottom-right (v1 in C++)
+                    this.vertexAO(s(x+1, y-1, z), s(x, y-1, z-1), s(x+1, y-1, z-1)),
+                    // Bottom-left (v0 in C++)
+                    this.vertexAO(s(x, y-1, z-1), s(x-1, y-1, z), s(x-1, y-1, z-1))
                 ];
                 break;
 
-            case '+x': // Right face (Corrected)
+            case '+x': // Right face
                 corners = [
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x, y, z+1), // adjacent front
-                        this.isSolid(x, y+1, z+1) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x, y, z-1), // adjacent back
-                        this.isSolid(x, y+1, z-1) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x, y, z-1), // adjacent back
-                        this.isSolid(x, y-1, z-1) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x, y, z+1), // adjacent front
-                        this.isSolid(x, y-1, z+1) // diagonal
-                    )
+                    // Top-left (v3 in C++)
+                    this.vertexAO(s(x+1, y+1, z), s(x+1, y, z-1), s(x+1, y+1, z-1)),
+                    // Top-right (v2 in C++)
+                    this.vertexAO(s(x+1, y, z+1), s(x+1, y+1, z), s(x+1, y+1, z+1)),
+                    // Bottom-right (v1 in C++)
+                    this.vertexAO(s(x+1, y-1, z), s(x+1, y, z+1), s(x+1, y-1, z+1)),
+                    // Bottom-left (v0 in C++)
+                    this.vertexAO(s(x+1, y, z-1), s(x+1, y-1, z), s(x+1, y-1, z-1))
                 ];
                 break;
 
-            case '-x': // Left face (Corrected)
+            case '-x': // Left face
                 corners = [
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x, y, z-1), // adjacent back
-                        this.isSolid(x, y+1, z-1) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x, y, z+1), // adjacent front
-                        this.isSolid(x, y+1, z+1) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x, y, z+1), // adjacent front
-                        this.isSolid(x, y-1, z+1) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x, y, z-1), // adjacent back
-                        this.isSolid(x, y-1, z-1) // diagonal
-                    )
+                    // Top-left (v3 in C++)
+                    this.vertexAO(s(x-1, y+1, z), s(x-1, y, z+1), s(x-1, y+1, z+1)),
+                    // Top-right (v2 in C++)
+                    this.vertexAO(s(x-1, y, z-1), s(x-1, y+1, z), s(x-1, y+1, z-1)),
+                    // Bottom-right (v1 in C++)
+                    this.vertexAO(s(x-1, y-1, z), s(x-1, y, z-1), s(x-1, y-1, z-1)),
+                    // Bottom-left (v0 in C++)
+                    this.vertexAO(s(x-1, y, z+1), s(x-1, y-1, z), s(x-1, y-1, z+1))
                 ];
                 break;
 
-            case '+z': // Front face (Corrected)
-                                corners = [
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x-1, y, z), // adjacent left
-                        this.isSolid(x-1, y+1, z) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x+1, y, z), // adjacent right
-                        this.isSolid(x+1, y+1, z) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x+1, y, z), // adjacent right
-                        this.isSolid(x+1, y-1, z) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x-1, y, z), // adjacent left
-                        this.isSolid(x-1, y-1, z) // diagonal
-                    )
+            case '+z': // Front face (C++ Back Face)
+                corners = [
+                    // Top-left (v3 in C++)
+                    this.vertexAO(s(x, y+1, z+1), s(x+1, y, z+1), s(x+1, y+1, z+1)),
+                    // Top-right (v2 in C++)
+                    this.vertexAO(s(x-1, y, z+1), s(x, y+1, z+1), s(x-1, y+1, z+1)),
+                    // Bottom-right (v1 in C++)
+                    this.vertexAO(s(x, y-1, z+1), s(x-1, y, z+1), s(x-1, y-1, z+1)),
+                    // Bottom-left (v0 in C++)
+                    this.vertexAO(s(x+1, y, z+1), s(x, y-1, z+1), s(x+1, y-1, z+1))
                 ];
                 break;
 
-            case '-z': // Back face (Corrected)
+            case '-z': // Back face (C++ Front Face)
                 corners = [
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x+1, y, z), // adjacent right
-                        this.isSolid(x+1, y+1, z) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y+1, z), // adjacent top
-                        this.isSolid(x-1, y, z), // adjacent left
-                        this.isSolid(x-1, y+1, z) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x-1, y, z), // adjacent left
-                        this.isSolid(x-1, y-1, z) // diagonal
-                    ),
-                    this.vertexAO(
-                        this.isSolid(x, y-1, z), // adjacent bottom
-                        this.isSolid(x+1, y, z), // adjacent right
-                        this.isSolid(x+1, y-1, z) // diagonal
-                    )
+                    // Top-left (v3 in C++)
+                    this.vertexAO(s(x, y+1, z-1), s(x-1, y, z-1), s(x-1, y+1, z-1)),
+                    // Top-right (v2 in C++)
+                    this.vertexAO(s(x+1, y, z-1), s(x, y+1, z-1), s(x+1, y+1, z-1)),
+                    // Bottom-right (v1 in C++)
+                    this.vertexAO(s(x, y-1, z-1), s(x+1, y, z-1), s(x+1, y-1, z-1)),
+                    // Bottom-left (v0 in C++)
+                    this.vertexAO(s(x-1, y, z-1), s(x, y-1, z-1), s(x-1, y-1, z-1))
                 ];
                 break;
         }
@@ -201,6 +129,7 @@ export class AmbientOcclusion {
      */
     aoToBrightness(ao) {
         // Map AO values: 0=0.4, 1=0.6, 2=0.8, 3=1.0
+        // The C++ shader's get_ao function does the same, mapping 0-3 to 1.0-0.35
         return 0.4 + (ao / 3) * 0.6;
     }
 }

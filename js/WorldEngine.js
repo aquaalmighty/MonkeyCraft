@@ -44,6 +44,32 @@ export class WorldEngine {
         });
     }
 
+    createDroppedItemMaterial(color) {
+        const canvas = document.createElement('canvas');
+        canvas.width = TEXTURE_SIZE;
+        canvas.height = TEXTURE_SIZE;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(0, 0, 2, 2);
+        ctx.fillRect(4, 4, 2, 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.fillRect(2, 8, 2, 2);
+        ctx.fillRect(6, 12, 2, 2);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        return new THREE.MeshStandardMaterial({
+            map: tex,
+            side: THREE.FrontSide,
+            roughness: 0.8,
+            metalness: 0.0
+        });
+    }
+
     initMaterials() {
         let i = 0;
         for (let id in BLOCKS) {
@@ -288,6 +314,147 @@ export class WorldEngine {
             return t === BLOCKS.AIR || t === BLOCKS.SAPLING;
         };
 
+
+        const pushFace = (matIdx, wx, y, wz, faceKey) => {
+            const verts = matVerts[matIdx];
+            const uvs = matUVs[matIdx];
+            const colors = matColors[matIdx];
+            const inds = matIndices[matIdx];
+            const currentCount = matCounts[matIdx];
+            const face = CUBE_FACES[faceKey];
+            
+            // Get AO values for this face
+            const aoValues = this.ao.getFaceAO(wx, y, wz, faceKey);
+            
+            // Convert AO to brightness
+            const brightness = aoValues.map(ao => this.ao.aoToBrightness(ao));
+            
+            // Add vertices
+            for (let i = 0; i < face.length; i += 3) {
+                verts.push(wx + face[i], y + face[i + 1], wz + face[i + 2]);
+            }
+            
+            // Add UVs
+            uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
+            
+            // Map AO values to actual vertex positions
+            // AO returns corners in order based on face's local coordinate system
+            const ao0 = brightness[0];
+            const ao1 = brightness[1];
+            const ao2 = brightness[2];
+            const ao3 = brightness[3];
+
+
+            // Map AO to vertices based on how getFaceAO samples each face
+            if (faceKey === '+y') {
+                // Top face - keep as is
+                colors.push(ao0, ao0, ao0, ao1, ao1, ao1, ao3, ao3, ao3, ao2, ao2, ao2);
+            } else if (faceKey === '-y') {
+                // Bottom face - keep as is
+                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao0, ao0, ao0, ao1, ao1, ao1);
+            } else if (faceKey === '+x') {
+                // Right face: CUBE_FACES = [1,0,1, 1,0,0, 1,1,1, 1,1,0]
+                // getFaceAO samples: [(+y,-z), (+y,+z), (-y,+z), (-y,-z)]
+                // That's: [TL, TR, BR, BL] where:
+                //   TL = top-back (y+1, z-1)  = ao0
+                //   TR = top-front (y+1, z+1) = ao1
+                //   BR = bottom-front (y-1, z+1) = ao2
+                //   BL = bottom-back (y-1, z-1) = ao3
+                // Vertices in CUBE_FACES order:
+                //   v0 = (1,0,1) = bottom-front = ao2
+                //   v1 = (1,0,0) = bottom-back = ao3
+                //   v2 = (1,1,1) = top-front = ao1
+                //   v3 = (1,1,0) = top-back = ao0
+                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+                
+            } else if (faceKey === '-x') {
+                // Left face: CUBE_FACES = [0,0,0, 0,0,1, 0,1,0, 0,1,1]
+                // getFaceAO samples: [(+y,+z), (+y,-z), (-y,-z), (-y,+z)]
+                // That's: [TL, TR, BR, BL] where:
+                //   TL = top-front (y+1, z+1) = ao0
+                //   TR = top-back (y+1, z-1) = ao1
+                //   BR = bottom-back (y-1, z-1) = ao2
+                //   BL = bottom-front (y-1, z+1) = ao3
+                // Vertices in CUBE_FACES order:
+                //   v0 = (0,0,0) = bottom-back = ao2
+                //   v1 = (0,0,1) = bottom-front = ao3
+                //   v2 = (0,1,0) = top-back = ao1
+                //   v3 = (0,1,1) = top-front = ao0
+                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+                
+            } else if (faceKey === '+z') {
+                // Front face: CUBE_FACES = [0,0,1, 1,0,1, 0,1,1, 1,1,1]
+                // getFaceAO samples: [(+y,+x), (+y,-x), (-y,-x), (-y,+x)]
+                // That's: [TL, TR, BR, BL] where:
+                //   TL = top-right (y+1, x+1) = ao0
+                //   TR = top-left (y+1, x-1) = ao1
+                //   BR = bottom-left (y-1, x-1) = ao2
+                //   BL = bottom-right (y-1, x+1) = ao3
+                // Vertices in CUBE_FACES order:
+                //   v0 = (0,0,1) = bottom-left = ao2
+                //   v1 = (1,0,1) = bottom-right = ao3
+                //   v2 = (0,1,1) = top-left = ao1
+                //   v3 = (1,1,1) = top-right = ao0
+                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+                
+            } else if (faceKey === '-z') {
+                // Back face: CUBE_FACES = [1,0,0, 0,0,0, 1,1,0, 0,1,0]
+                // getFaceAO samples: [(+y,-x), (+y,+x), (-y,+x), (-y,-x)]
+                // That's: [TL, TR, BR, BL] where:
+                //   TL = top-left (y+1, x-1) = ao0
+                //   TR = top-right (y+1, x+1) = ao1
+                //   BR = bottom-right (y-1, x+1) = ao2
+                //   BL = bottom-left (y-1, x-1) = ao3
+                // Vertices in CUBE_FACES order:
+                //   v0 = (1,0,0) = bottom-right = ao2
+                //   v1 = (0,0,0) = bottom-left = ao3
+                //   v2 = (1,1,0) = top-right = ao1
+                //   v3 = (0,1,0) = top-left = ao0
+                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+            }
+
+            /**
+
+            // Map AO to vertices based on how getFaceAO samples each face
+            if (faceKey === '+y') {
+                colors.push(ao0, ao0, ao0, ao1, ao1, ao1, ao3, ao3, ao3, ao2, ao2, ao2);
+            } else if (faceKey === '-y') {
+                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao0, ao0, ao0, ao1, ao1, ao1);
+            } else if (faceKey === '+x') {
+                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao1, ao1, ao1, ao0, ao0, ao0);
+            } else if (faceKey === '-x') {
+                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao1, ao1, ao1, ao0, ao0, ao0);
+            } else if (faceKey === '+z') {
+                colors.push(ao3, ao3, ao3, ao2, ao2, ao2, ao1, ao1, ao1, ao0, ao0, ao0);
+            } else if (faceKey === '-z') {
+                colors.push(ao2, ao2, ao2, ao3, ao3, ao3, ao0, ao0, ao0, ao1, ao1, ao1);
+            }
+
+            **/
+            
+            // CRITICAL: Choose quad subdivision based on AO values to avoid anisotropy
+            // From the paper: if(ao0 + ao2 > ao1 + ao3) flip the quad
+            // This ensures we subdivide along the diagonal with less AO variation
+            if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
+                // Use diagonal v1-v2 (flipped quad)
+                inds.push(
+                    currentCount, currentCount + 1, currentCount + 2,
+                    currentCount + 2, currentCount + 1, currentCount + 3
+                );
+            } else {
+                // Use diagonal v0-v3 (normal quad)
+                inds.push(
+                    currentCount, currentCount + 1, currentCount + 3,
+                    currentCount, currentCount + 3, currentCount + 2
+                );
+            }
+            
+            matCounts[matIdx] += 4;
+        };
+
+
+        /** 
+
         const pushFace = (matIdx, wx, y, wz, faceKey) => {
             const verts = matVerts[matIdx];
             const uvs = matUVs[matIdx];
@@ -311,11 +478,297 @@ export class WorldEngine {
             uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
             
             // Add vertex colors for AO (RGB all same for grayscale)
-            const b_tl = brightness[0]; // TopLeft
-            const b_tr = brightness[1]; // TopRight
-            const b_br = brightness[2]; // BottomRight
-            const b_bl = brightness[3]; // BottomLeft
+            // AO returns [corner0, corner1, corner2, corner3] based on the face's sampling pattern
+            const ao0 = brightness[0];
+            const ao1 = brightness[1];
+            const ao2 = brightness[2];
+            const ao3 = brightness[3];
 
+            // Map AO corners to CUBE_FACES vertices by matching the sampling positions
+            if (faceKey === '+y') {
+                // getFaceAO samples: [(-x,+z), (+x,+z), (+x,-z), (-x,-z)]
+                // CUBE_FACES: [(0,1,1), (1,1,1), (0,1,0), (1,1,0)]
+                // v0=(0,z=1)=ao0, v1=(1,z=1)=ao1, v2=(0,z=0)=ao3, v3=(1,z=0)=ao2
+                colors.push(ao0, ao0, ao0); // v0
+                colors.push(ao1, ao1, ao1); // v1
+                colors.push(ao3, ao3, ao3); // v2
+                colors.push(ao2, ao2, ao2); // v3
+            } else if (faceKey === '-y') {
+                // getFaceAO samples: [(-x,+z), (+x,+z), (+x,-z), (-x,-z)]
+                // CUBE_FACES: [(0,0,0), (1,0,0), (0,0,1), (1,0,1)]
+                // v0=(0,z=0)=ao3, v1=(1,z=0)=ao2, v2=(0,z=1)=ao0, v3=(1,z=1)=ao1
+                colors.push(ao3, ao3, ao3); // v0
+                colors.push(ao2, ao2, ao2); // v1
+                colors.push(ao0, ao0, ao0); // v2
+                colors.push(ao1, ao1, ao1); // v3
+            } else if (faceKey === '+x') {
+                // getFaceAO samples: [(+y,-z), (+y,+z), (-y,+z), (-y,-z)]
+                // CUBE_FACES: [(1,0,1), (1,0,0), (1,1,1), (1,1,0)]
+                // v0=(y=0,z=1)=ao3, v1=(y=0,z=0)=ao2, v2=(y=1,z=1)=ao1, v3=(y=1,z=0)=ao0
+                colors.push(ao3, ao3, ao3); // v0
+                colors.push(ao2, ao2, ao2); // v1
+                colors.push(ao1, ao1, ao1); // v2
+                colors.push(ao0, ao0, ao0); // v3
+            } else if (faceKey === '-x') {
+                // getFaceAO samples: [(+y,+z), (+y,-z), (-y,-z), (-y,+z)]
+                // CUBE_FACES: [(0,0,0), (0,0,1), (0,1,0), (0,1,1)]
+                // v0=(y=0,z=0)=ao2, v1=(y=0,z=1)=ao3, v2=(y=1,z=0)=ao1, v3=(y=1,z=1)=ao0
+                colors.push(ao2, ao2, ao2); // v0
+                colors.push(ao3, ao3, ao3); // v1
+                colors.push(ao1, ao1, ao1); // v2
+                colors.push(ao0, ao0, ao0); // v3
+            } else if (faceKey === '+z') {
+                // getFaceAO samples: [(+y,+x), (+y,-x), (-y,-x), (-y,+x)]
+                // CUBE_FACES: [(0,0,1), (1,0,1), (0,1,1), (1,1,1)]
+                // v0=(x=0,y=0)=ao3, v1=(x=1,y=0)=ao2, v2=(x=0,y=1)=ao1, v3=(x=1,y=1)=ao0
+                colors.push(ao3, ao3, ao3); // v0
+                colors.push(ao2, ao2, ao2); // v1
+                colors.push(ao1, ao1, ao1); // v2
+                colors.push(ao0, ao0, ao0); // v3
+            } else if (faceKey === '-z') {
+                // getFaceAO samples: [(+y,-x), (+y,+x), (-y,+x), (-y,-x)]
+                // CUBE_FACES: [(1,0,0), (0,0,0), (1,1,0), (0,1,0)]
+                // v0=(x=1,y=0)=ao2, v1=(x=0,y=0)=ao3, v2=(x=1,y=1)=ao0, v3=(x=0,y=1)=ao1
+                colors.push(ao2, ao2, ao2); // v0
+                colors.push(ao3, ao3, ao3); // v1
+                colors.push(ao0, ao0, ao0); // v2
+                colors.push(ao1, ao1, ao1); // v3
+            }
+
+            **/
+
+            /** 
+            // FIX: Assign colors based on each specific face direction
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-x') {
+                colors.push(b_bl, b_bl, b_bl); // v0 - SAME as +x
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '+z') {
+                colors.push(b_br, b_br, b_br); // v0 - FLIPPED
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            } else if (faceKey === '-z') {
+                colors.push(b_bl, b_bl, b_bl); // v0 - same as +x/-x
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            }
+
+            **/
+
+            /**
+
+            // FIX: Assign colors based on each specific face direction
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-x') {
+                colors.push(b_bl, b_bl, b_bl); // v0 - SAME as +x (not opposite)
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '+z') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-z') {
+                colors.push(b_br, b_br, b_br); // v0 - opposite of +z
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            }
+
+            **/
+
+            /**
+
+            // FIX: Assign colors based on each specific face direction
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-x') {
+                colors.push(b_br, b_br, b_br); // v0 - opposite of +x
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            } else if (faceKey === '+z') {
+                colors.push(b_bl, b_bl, b_bl); // v0 - CHANGED to match +x pattern
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-z') {
+                colors.push(b_br, b_br, b_br); // v0 - opposite of +z
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            }
+
+            **/
+
+            /** 
+
+            // FIX: Assign colors based on each specific face direction
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-x') {
+                colors.push(b_bl, b_bl, b_bl); // v0 - SWAPPED to match +x
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '+z') {
+                colors.push(b_br, b_br, b_br); // v0
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            } else if (faceKey === '-z') {
+                colors.push(b_br, b_br, b_br); // v0 - SWAPPED to match +z
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            }
+
+            **/
+
+            /**
+
+            // FIX: Assign colors based on each specific face direction
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else if (faceKey === '-x') {
+                colors.push(b_br, b_br, b_br); // v0
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            } else if (faceKey === '+z') {
+                colors.push(b_br, b_br, b_br); // v0
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            } else if (faceKey === '-z') {
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            }
+
+            **/
+
+
+            /**
+
+            // FIX: Assign colors based on actual face vertex layout
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x' || faceKey === '-x') {
+                // X-axis Faces: Swapped vertical order
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else {
+                // Z-axis Faces: Swapped both vertical AND horizontal
+                colors.push(b_br, b_br, b_br); // v0
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2
+                colors.push(b_tl, b_tl, b_tl); // v3
+            }
+
+            **/
+
+            /**
+            // FIX: Assign colors based on actual face vertex layout
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else {
+                // All Side Faces (X and Z): Same swapped order
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            }
+            **/
+
+            /**
+
+            // FIX: Assign colors based on actual face vertex layout
+            if (faceKey === '+y' || faceKey === '-y') {
+                // Top & Bottom Faces: Standard Order
+                colors.push(b_tl, b_tl, b_tl); // v0
+                colors.push(b_tr, b_tr, b_tr); // v1
+                colors.push(b_bl, b_bl, b_bl); // v2
+                colors.push(b_br, b_br, b_br); // v3
+            } else if (faceKey === '+x' || faceKey === '-x') {
+                // X-axis Faces: Different winding
+                colors.push(b_bl, b_bl, b_bl); // v0
+                colors.push(b_br, b_br, b_br); // v1
+                colors.push(b_tl, b_tl, b_tl); // v2
+                colors.push(b_tr, b_tr, b_tr); // v3
+            } else {
+                // Z-axis Faces (+z/-z): Need mirrored horizontal order
+                colors.push(b_br, b_br, b_br); // v0 - swap BR/BL
+                colors.push(b_bl, b_bl, b_bl); // v1
+                colors.push(b_tr, b_tr, b_tr); // v2 - swap TR/TL
+                colors.push(b_tl, b_tl, b_tl); // v3
+            }
+            **/
+
+            /** 
             // FIX: Check face direction to apply colors to the correct vertices
             if (faceKey === '+y' || faceKey === '-y') {
                 // Top & Bottom Faces: Standard Order (TL, TR, BL, BR)
@@ -331,7 +784,10 @@ export class WorldEngine {
                 colors.push(b_tl, b_tl, b_tl); // v2
                 colors.push(b_tr, b_tr, b_tr); // v3
             }
+            **/
             
+            /** 
+
             // NEW, CORRECTED CODE
             // Add indices - check if we need to flip quad to avoid artifacts
             if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
@@ -347,6 +803,8 @@ export class WorldEngine {
             
             matCounts[matIdx] += 4;
         };
+
+        **/
 
         for (let y = 0; y < WORLD_HEIGHT; y++) {
             for (let z = 0; z < CHUNK_SIZE; z++) {

@@ -374,12 +374,22 @@ export class PlayerController {
     }
 
     checkAutoLoot(playerPos) {
-        const pickupRadiusSq = 2.0 * 2.0;
-        const playerFeetPos = new THREE.Vector3(playerPos.x, playerPos.y - 1.5, playerPos.z);
+        const pickupRadius = 1.0; // Horizontal radius (1 block around player)
+        const pickupRadiusSq = pickupRadius * pickupRadius;
+        const playerCenterPos = new THREE.Vector3(playerPos.x, playerPos.y - 0.75, playerPos.z); // Center of player (2 blocks high)
+        const verticalRange = 1.5; // Check 1.5 blocks above and below player center
         
         for (let i = this.entityManager.droppedItems.length - 1; i >= 0; i--) {
             const item = this.entityManager.droppedItems[i];
-            if (playerFeetPos.distanceToSquared(item.mesh.position) < pickupRadiusSq) {
+            const itemPos = item.mesh.position;
+            
+            // Check horizontal distance (X and Z)
+            const horizontalDistSq = (itemPos.x - playerCenterPos.x) ** 2 + (itemPos.z - playerCenterPos.z) ** 2;
+            
+            // Check vertical distance (Y)
+            const verticalDist = Math.abs(itemPos.y - playerCenterPos.y);
+            
+            if (horizontalDistSq < pickupRadiusSq && verticalDist < verticalRange) {
                 this.uiManager.addItem(item.blockId, 1);
                 this.entityManager.removeDroppedItem(item);
                 this.uiManager.updateUI();

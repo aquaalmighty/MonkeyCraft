@@ -412,17 +412,24 @@ export class EntityManager {
         const itemColor = BLOCK_COLORS[blockId] || '#FF00FF';
         const mesh = new THREE.Mesh(
             new THREE.BoxGeometry(0.3, 0.3, 0.3),
-            this.worldEngine.createMaterial(itemColor)
+            this.worldEngine.createDroppedItemMaterial(itemColor)
         );
-        mesh.position.copy(pos);
+        
+        // Offset spawn position slightly above the block to avoid clipping
+        const spawnPos = pos.clone().add(new THREE.Vector3(0, 0.35, 0));
+        mesh.position.copy(spawnPos);
         
         const item = {
             id: Math.random().toString(36).substring(2),
             blockId: blockId,
             mesh: mesh,
-            vel: new THREE.Vector3((Math.random() - 0.5) * 3, 5, (Math.random() - 0.5) * 3),
+            vel: new THREE.Vector3((Math.random() - 0.5) * 1.5, 3, (Math.random() - 0.5) * 1.5), // Reduced velocity
             time: 0,
-            baseY: null
+            baseY: null,
+            spawnY: spawnPos.y,
+            spawnX: spawnPos.x,
+            spawnZ: spawnPos.z,
+            maxHeight: spawnPos.y + 0.8 // Ceiling limit
         };
         
         this.scene.add(mesh);
@@ -437,22 +444,44 @@ export class EntityManager {
             
             if (item.baseY === null) {
                 item.vel.y -= GRAVITY * dt;
+                
+                // Constrain item to stay near the original block (within 0.5 blocks horizontally)
+                const dx = item.mesh.position.x - item.spawnX;
+                const dz = item.mesh.position.z - item.spawnZ;
+                const maxHorizontalDist = 0.4;
+                
+                if (Math.abs(dx) > maxHorizontalDist || Math.abs(dz) > maxHorizontalDist) {
+                    // Dampen movement towards center
+                    item.vel.x *= 0.5;
+                    item.vel.z *= 0.5;
+                }
+                
+                // Enforce ceiling limit - bounce off ceiling
+                if (item.mesh.position.y > item.maxHeight && item.vel.y > 0) {
+                    item.vel.y *= -0.3; // Bounce down with damping
+                }
+                
                 item.mesh.position.addScaledVector(item.vel, dt);
 
+                // Check collision with proper clearance (item radius is 0.15)
                 const ix = Math.floor(item.mesh.position.x);
                 const iz = Math.floor(item.mesh.position.z);
-                const iy = Math.floor(item.mesh.position.y - 0.3);
+                const iy = Math.floor(item.mesh.position.y - 0.15); // Bottom of item
 
                 if (this.worldEngine.getWorldBlock(ix, iy, iz) !== BLOCKS.AIR && 
                     this.worldEngine.getWorldBlock(ix, iy, iz) !== BLOCKS.SAPLING) {
-                    item.baseY = iy + 1.5;
-                    item.vel.set(0, 0, 0);
+                    // Only settle if not trying to settle above spawn location (prevents teleporting up through blocks)
+                    const settleY = iy + 1.15;
+                    if (settleY <= item.spawnY + 0.5) {
+                        item.baseY = settleY;
+                        item.vel.set(0, 0, 0);
+                    }
                 }
             } else {
                 item.mesh.position.y = item.baseY + Math.sin(item.time) * 0.1;
                 const ix = Math.floor(item.mesh.position.x);
                 const iz = Math.floor(item.mesh.position.z);
-                const iy = Math.floor(item.baseY - 1.5);
+                const iy = Math.floor(item.baseY - 1.15);
                 if (this.worldEngine.getWorldBlock(ix, iy, iz) === BLOCKS.AIR) {
                     item.baseY = null;
                 }
