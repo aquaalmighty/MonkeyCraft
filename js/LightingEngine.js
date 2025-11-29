@@ -5,7 +5,7 @@ import { CHUNK_SIZE, WORLD_HEIGHT, BLOCKS } from './GameConstants.js';
 export class LightingEngine {
     constructor(worldEngine) {
         this.worldEngine = worldEngine;
-        this.enabled = true; // Toggle for lighting
+        this.enabled = false; // Toggle for lighting
         
         this.lightData = new Map();
         
@@ -34,6 +34,7 @@ export class LightingEngine {
 
     setEnabled(enabled) {
         this.enabled = enabled;
+        
         if (!enabled) {
             // Clear queues when disabled
             this.lightQueue = [];

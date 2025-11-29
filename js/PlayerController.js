@@ -321,6 +321,15 @@ export class PlayerController {
         console.log('Ambient Occlusion:', this.worldEngine.ao.enabled ? 'ON' : 'OFF');
         this.worldEngine.updateChunks();
     }
+    if (e.code === 'KeyP' && down) {
+        // Toggle shadows
+        this.worldEngine.shadowBaker.setEnabled(!this.worldEngine.shadowBaker.enabled);
+        console.log('Baked Shadows:', this.worldEngine.shadowBaker.enabled ? 'ON' : 'OFF');
+        if (this.worldEngine.shadowBaker.enabled) {
+            this.worldEngine.shadowBaker.bakeAllChunks();
+        }
+        this.worldEngine.updateChunks();
+    }
 }
 
 

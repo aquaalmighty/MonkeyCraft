@@ -2,10 +2,11 @@
 
 import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_SIZE_CHUNKS, TEXTURE_SIZE, BLOCKS, BLOCK_COLORS, CUBE_FACES } from './GameConstants.js';
 import { AmbientOcclusion } from './AmbientOcclusion.js';
-import { LightingEngine } from './LightingEngine.js';
+//import { LightingEngine } from './LightingEngine.js';
+import { ShadowBaker } from './ShadowBaker.js';
 
 export class WorldEngine {
-        constructor(scene) {
+        constructor(scene, dayNightCycle = null) {
         this.scene = scene;
         this.chunks = {};
         this.materials = [];
@@ -13,7 +14,15 @@ export class WorldEngine {
         this.saplingObjects = [];
         this.saplingModel = null;
         this.ao = new AmbientOcclusion(this);
-        this.lighting = new LightingEngine(this); // ADD THIS
+        // this.lighting = new LightingEngine(this); // COMMENT OUT OR DELETE
+        // this.lighting.setEnabled(false); // COMMENT OUT OR DELETE
+        this.shadowBaker = new ShadowBaker(this, dayNightCycle);
+        this.shadowBaker.setEnabled(true); // Temporarily disable to test
+        
+        // Track last shadow update
+        this.lastShadowUpdateAngle = 0;
+        this.shadowUpdateTimer = 0;
+        this.shadowUpdateInterval = 5.0;
         
         this.initMaterials();
     }
@@ -119,6 +128,8 @@ export class WorldEngine {
     chunk.data[idx] = type;
     chunk.dirty = true;
     
+    // COMMENT OUT OR DELETE THIS ENTIRE SECTION:
+    /*
     // Handle lighting updates (OPTIMIZED - minimal immediate work)
     if (this.lighting && this.lighting.enabled) {
         if (type === BLOCKS.TORCH) {
@@ -128,6 +139,13 @@ export class WorldEngine {
         } else if (type !== BLOCKS.AIR) {
             this.lighting.removeLight(x, y, z);
         }
+    }
+    */
+    
+    // In setWorldBlock, replace the shadow update section with:
+    // Update shadows for affected column only (very fast)
+    if (this.shadowBaker && this.shadowBaker.enabled) {
+        this.shadowBaker.updateBlockColumn(x, z);
     }
     
     // Handle drops
@@ -348,26 +366,22 @@ export class WorldEngine {
         const currentCount = matCounts[matIdx];
         const face = CUBE_FACES[faceKey];
         
-        // Get AO values for this face (YOUR PERFECTED AO)
+       // Get AO values for this face (YOUR PERFECTED AO)
         const aoValues = this.ao.getFaceAO(wx, y, wz, faceKey);
-        
+
         // Convert AO to brightness (YOUR PERFECTED AO)
         const aoBrightness = aoValues.map(ao => this.ao.aoToBrightness(ao));
-        
-        // Get lighting brightness at block center (SAFE)
-        let lightBrightness = 0.8; // Default brightness if lighting not available
-        if (this.lighting) {
-            try {
-                lightBrightness = this.lighting.getBrightnessAt(wx, y, wz);
-            } catch (error) {
-                console.warn('Lighting brightness error:', error);
-                lightBrightness = 0.8;
-            }
+
+        // Get shadow brightness at block center
+        let shadowBrightness = 1.0; // Default to full brightness if shadows disabled
+        if (this.shadowBaker && this.shadowBaker.enabled) {
+            shadowBrightness = this.shadowBaker.getShadowBrightness(wx, y, wz);
         }
-        
-        // Combine AO with lighting: AO modulates the lighting
+
+        // Combine AO with shadows
+        // AO modulates the shadow brightness
         const finalBrightness = aoBrightness.map(ao => {
-            return ao * (0.2 + lightBrightness * 0.8);
+            return ao * shadowBrightness;
         });
         
         // Add vertices
@@ -480,7 +494,14 @@ export class WorldEngine {
                 this.chunks[this.getChunkKey(x, z)] = c;
             }
         }
-        this.lighting.initializeLighting(); // ADD THIS
+        // Lighting engine initialization disabled by default
+        // this.lighting.initializeLighting();
+        
+        // Bake shadows for all chunks
+        if (this.shadowBaker && this.shadowBaker.enabled) {
+            this.shadowBaker.bakeAllChunks();
+        }
+        
         this.updateChunks();
     }
 
@@ -542,6 +563,28 @@ export class WorldEngine {
             element.style.display = 'block';
         } else {
             element.style.display = 'none';
+        }
+    }
+
+    // Update shadows based on time of day
+    updateShadows(dt) {
+        if (!this.shadowBaker || !this.shadowBaker.enabled) return;
+        
+        this.shadowUpdateTimer += dt;
+        
+        // Check if enough time has passed and sun has moved significantly
+        if (this.shadowUpdateTimer >= this.shadowUpdateInterval) {
+            const currentAngle = this.shadowBaker.dayNightCycle ? 
+                this.shadowBaker.dayNightCycle.getSunAngle() : 0;
+            
+            if (this.shadowBaker.shouldUpdateShadows(this.lastShadowUpdateAngle)) {
+                console.log('Updating shadows due to sun movement...');
+                this.shadowBaker.updateShadows();
+                this.lastShadowUpdateAngle = currentAngle;
+                this.updateChunks();
+            }
+            
+            this.shadowUpdateTimer = 0;
         }
     }
 }

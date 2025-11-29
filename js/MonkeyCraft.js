@@ -25,41 +25,43 @@ class MonkeyCraft {
     }
 
     init() {
-        // Setup Three.js scene
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x87CEEB);
-        this.scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
-        
-        this.camera = new THREE.PerspectiveCamera(
-            70,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            100
-        );
+    // Setup Three.js scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x87CEEB);
+    this.scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+    
+    this.camera = new THREE.PerspectiveCamera(
+        70,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        100
+    );
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: false });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        document.body.appendChild(this.renderer.domElement);
+    this.renderer = new THREE.WebGLRenderer({ antialias: false });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    document.body.appendChild(this.renderer.domElement);
 
-        // Pointer lock controls
-        this.controls = new THREE.PointerLockControls(this.camera, document.body);
-        this.scene.add(this.controls.getObject());
-        this.controls.getObject().position.set(0, 30, 0);
+    // Pointer lock controls
+    this.controls = new THREE.PointerLockControls(this.camera, document.body);
+    this.scene.add(this.controls.getObject());
+    this.controls.getObject().position.set(0, 30, 0);
 
-        // Initialize game subsystems
-        this.worldEngine = new WorldEngine(this.scene);
-        this.uiManager = new UIManager(this.controls);
-        this.entityManager = new EntityManager(this.scene, this.worldEngine);
-        this.dayNightCycle = new DayNightCycle(this.scene);
-        this.objectiveManager = new ObjectiveManager();
-        this.playerController = new PlayerController(
-            this.camera,
-            this.controls,
-            this.worldEngine,
-            this.entityManager,
-            this.uiManager
-        );
+    // Initialize day/night cycle first (needed for shadows)
+    this.dayNightCycle = new DayNightCycle(this.scene);
+
+    // Initialize game subsystems (pass dayNightCycle to WorldEngine)
+    this.worldEngine = new WorldEngine(this.scene, this.dayNightCycle);
+    this.uiManager = new UIManager(this.controls);
+    this.entityManager = new EntityManager(this.scene, this.worldEngine);
+    this.objectiveManager = new ObjectiveManager();
+    this.playerController = new PlayerController(
+        this.camera,
+        this.controls,
+        this.worldEngine,
+        this.entityManager,
+        this.uiManager
+    );
 
         // Setup event listeners
         this.setupEventListeners();
@@ -149,12 +151,15 @@ class MonkeyCraft {
         // Update all game systems
         this.dayNightCycle.update(dt, () => this.uiManager.incrementDay());
         
-        // Update lighting system (throttled internally)
+        // Update lighting system (throttled internally) - only if enabled
         if (this.worldEngine.lighting && this.worldEngine.lighting.enabled) {
             this.worldEngine.lighting.sunAngle = this.dayNightCycle.getSunAngle();
             this.worldEngine.lighting.sunColor = this.dayNightCycle.getSunColor();
             this.worldEngine.lighting.updateLighting(dt);
         }
+
+        // Update shadows (throttled internally)
+        //this.worldEngine.updateShadows(dt);
         
         this.objectiveManager.update(dt);
         
