@@ -193,6 +193,40 @@ export class EntityManager {
         });
     }
 
+    canMonkeyReachPlayer(monkeyPos, playerPos) {
+        // Check distance first - must be within range
+        const maxAttackDistance = 3.0;
+        const distance = monkeyPos.distanceTo(playerPos);
+        if (distance > maxAttackDistance) {
+            return false;
+        }
+
+        // Raycast from monkey to player to check for blocking blocks
+        const direction = new THREE.Vector3()
+            .subVectors(playerPos, monkeyPos)
+            .normalize();
+        
+        // Step along the ray checking for blocks
+        const stepSize = 0.3; // Check every 0.3 units
+        let currentPos = monkeyPos.clone();
+        const step = direction.clone().multiplyScalar(stepSize);
+        
+        while (currentPos.distanceTo(monkeyPos) < distance - 0.5) {
+            currentPos.add(step);
+            const x = Math.floor(currentPos.x);
+            const y = Math.floor(currentPos.y);
+            const z = Math.floor(currentPos.z);
+            
+            // Check if this position has a solid block
+            const block = this.worldEngine.getWorldBlock(x, y, z);
+            if (block !== BLOCKS.AIR && block !== BLOCKS.SAPLING) {
+                return false; // Block is in the way
+            }
+        }
+        
+        return true;
+    }
+
     updateMonkeys(dt, playerPos, gameTime, camera, onPlayerDamage) {
         const isNight = (gameTime > DAY_DURATION * 0.75 || gameTime < DAY_DURATION * 0.25);
         const spawnRate = isNight ? 2.0 : 10.0;
@@ -282,7 +316,7 @@ export class EntityManager {
                     }
                 } else {
                     m.target.copy(playerPos);
-                    if (distToPlayer < 3.0 && m.attackCooldown <= 0) {
+                    if (m.attackCooldown <= 0 && this.canMonkeyReachPlayer(m.mesh.position, playerPos)) {
                         if (onPlayerDamage) onPlayerDamage(m);
                         m.attackCooldown = 1.5;
                     }

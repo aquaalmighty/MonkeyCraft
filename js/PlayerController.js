@@ -168,8 +168,10 @@ export class PlayerController {
         const isWood = selectedBlockId === BLOCKS.WOOD || selectedBlockId === BLOCKS.PLANKS;
 
         if (e.button === 0) {
+            console.log('[LEFT CLICK]');
             this.handleLeftClick(ray, isSword, isPickaxe);
         } else if (e.button === 2) {
+            console.log('[RIGHT CLICK] selectedBlockId:', selectedBlockId, 'isWood:', isWood, 'isSword:', isSword, 'isPickaxe:', isPickaxe, 'isTorch:', isTorch);
             this.handleRightClick(ray, selectedBlockId, isWood, isSword, isPickaxe, isTorch);
         }
     }
@@ -295,33 +297,90 @@ export class PlayerController {
         }
         
         // Place block
-        if (this.uiManager.getItemCount(selectedBlockId) > 0 && !isSword && !isPickaxe && !isTorch) {
+        const itemCount = this.uiManager.getItemCount(selectedBlockId);
+        console.log('[PLACE BLOCK CHECK] itemCount:', itemCount, 'isSword:', isSword, 'isPickaxe:', isPickaxe, 'isTorch:', isTorch);
+        if (itemCount > 0 && !isSword && !isPickaxe && !isTorch) {
+            console.log('[PLACE BLOCK] Attempting to place block');
+            // Create a fresh raycaster for block placement to avoid stale state
+            const blockRay = new THREE.Raycaster();
+            
+            // Get the camera's world position and direction
+            const cameraPos = this.camera.getWorldPosition(new THREE.Vector3());
+            const cameraDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion()));
+            
+            console.log('[RAYCASTER SETUP] cameraPos:', cameraPos, 'cameraDir:', cameraDir);
+            blockRay.set(cameraPos, cameraDir);
+            blockRay.far = 6;
+            
             const meshes = Object.values(this.worldEngine.chunks).map(c => c.mesh).filter(Boolean);
-            const hits = ray.intersectObjects(meshes);
+            console.log('[RAYCASTER] meshes found:', meshes.length);
+            const hits = blockRay.intersectObjects(meshes);
+            console.log('[RAYCASTER] hits found:', hits.length);
 
             if (hits.length > 0) {
                 const hit = hits[0];
                 const p = hit.point;
-                const n = hit.face.normal;
+                let n = hit.face.normal.clone();
+                
+                // IMPORTANT: Transform face normal from local to world space
+                // The face normal is in geometry/local space, we need world space normal
+                n.applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld));
+                n.normalize();
+                
+                console.log('[HIT] point:', p, 'face normal (local):', hit.face.normal, 'face normal (world):', n, 'distance:', hit.distance);
                 
                 const tx = Math.floor(p.x + n.x * 0.1);
                 const ty = Math.floor(p.y + n.y * 0.1);
                 const tz = Math.floor(p.z + n.z * 0.1);
+                console.log('[PLACEMENT] calculated coords: tx=' + tx + ', ty=' + ty + ', tz=' + tz);
                 
                 const pp = this.controls.getObject().position;
-                if (Math.abs(tx - pp.x) < 0.8 && ty >= (pp.y - 1.8) && ty <= (pp.y + 0.2)) return;
                 
-                if (this.worldEngine.getWorldBlock(tx, ty, tz) === BLOCKS.AIR) {
-                    if (Math.abs(tx) < 2 && Math.abs(tz) < 2 && 
-                        ty === Math.floor(this.entityManager.campfire.mesh?.position.y || 0)) return;
+                const blockAtPos = this.worldEngine.getWorldBlock(tx, ty, tz);
+                console.log('[BLOCK CHECK] Block at placement pos:', blockAtPos, 'is AIR?', blockAtPos === BLOCKS.AIR);
+                if (blockAtPos === BLOCKS.AIR) {
+                    // Check if placement block is inside player's collision radius
+                    const playerRadius = 0.3; // Half-width of player collision box
+                    const playerHeight = 1.8; // Player height
+                    const playerHeadY = pp.y + 0.2; // Top of player head
+                    const playerFeetY = pp.y - 1.7; // Bottom of player feet
+                    
+                    // Check if the placement block overlaps with player collision box
+                    const blockOverlapsX = Math.abs(tx + 0.5 - pp.x) < playerRadius + 0.5;
+                    const blockOverlapsZ = Math.abs(tz + 0.5 - pp.z) < playerRadius + 0.5;
+                    const blockOverlapsY = (ty + 1) > (playerFeetY + 0.2) && ty < (playerHeadY - 0.1);
+                    
+                    const blockInPlayer = blockOverlapsX && blockOverlapsZ && blockOverlapsY;
+                    console.log('[PLACEMENT COLLISION] playerRadius:', playerRadius, 'blockCenter: (' + (tx + 0.5) + ', ' + ty + ', ' + (tz + 0.5) + ')');
+                    console.log('[PLACEMENT COLLISION] blockOverlapsX:', blockOverlapsX, 'blockOverlapsZ:', blockOverlapsZ, 'blockOverlapsY:', blockOverlapsY, 'result:', blockInPlayer);
+                    
+                    if (blockInPlayer) {
+                        console.log('[BLOCKED] Placement block overlaps with player - cannot place');
+                        return;
+                    }
+                    
+                    const isCampfire = Math.abs(tx) < 2 && Math.abs(tz) < 2 && 
+                        ty === Math.floor(this.entityManager.campfire.mesh?.position.y || 0);
+                    console.log('[CAMPFIRE CHECK] Is campfire location?', isCampfire);
+                    if (isCampfire) {
+                        console.log('[BLOCKED] Campfire location - cannot place');
+                        return;
+                    }
 
+                    console.log('[SUCCESS] Placing block', selectedBlockId, 'at', tx, ty, tz);
                     this.worldEngine.setWorldBlock(tx, ty, tz, selectedBlockId);
                     this.uiManager.decrementItem(selectedBlockId);
                     this.worldEngine.updateChunks();
                     this.uiManager.cleanInventory();
                     this.uiManager.updateUI();
+                } else {
+                    console.log('[BLOCKED] Block already exists at position');
                 }
+            } else {
+                console.log('[BLOCKED] No world mesh hits detected');
             }
+        } else {
+            console.log('[BLOCKED] Not a placeable item or no inventory');
         }
     }
 

@@ -29,7 +29,7 @@ export class UIManager {
         this.hotbarSlots[0] = {itemId: BLOCKS.SWORD, count: 1};
         this.hotbarSlots[1] = {itemId: BLOCKS.PICKAXE, count: 1};
         this.hotbarSlots[2] = {itemId: BLOCKS.TORCH, count: 1};
-        this.hotbarSlots[3] = {itemId: BLOCKS.WOOD, count: 25};
+        this.hotbarSlots[3] = {itemId: BLOCKS.WOOD, count: 100};
         this.hotbarSlots[4] = {itemId: BLOCKS.AIR, count: 0};
     }
 

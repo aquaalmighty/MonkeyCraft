@@ -85,7 +85,7 @@ class MonkeyCraft {
         // Objective 1: Prepare for nightfall (1 minute timer)
         this.objectiveManager.addObjective(
             'PREPARE FOR NIGHTFALL',
-            60, // 1 minute in seconds
+            30, // 1 minute in seconds
             () => {
                 // When timer completes, start spawning monkeys
                 this.entityManager.allowContinuousSpawning = true;
