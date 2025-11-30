@@ -34,6 +34,8 @@ export class PlayerController {
 
         this.miningTimer = null;
 
+        this.miningAnimationTimer = 0; // Local timer for mining animation
+
         this.currentMiningBlock = null;
 
         this.miningIndicator = null;
@@ -108,6 +110,26 @@ export class PlayerController {
 
         this.previousOffhandSwayOffset = new THREE.Vector3();
 
+        
+
+        // Pickaxe tween after mining
+
+        this.isPickaxeTweening = false;
+
+        this.pickaxeTweenProgress = 0;
+
+        this.pickaxeIdleRotX = 0;
+
+        this.pickaxeIdleRotY = 0;
+
+        this.pickaxeIdleRotZ = 0;
+
+        this.pickaxeStartRotX = 0;
+
+        this.pickaxeStartRotY = 0;
+
+        this.pickaxeStartRotZ = 0;
+
 
 
         this.setupPlayerHand();
@@ -119,10 +141,6 @@ export class PlayerController {
 
 
     setupPlayerHand() {
-
-        const swordMat = new THREE.MeshLambertMaterial({ color: BLOCK_COLORS[BLOCKS.SWORD] });
-
-        const pickMat = new THREE.MeshLambertMaterial({ color: BLOCK_COLORS[BLOCKS.PICKAXE] });
 
         const woodMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
 
@@ -136,19 +154,16 @@ export class PlayerController {
 
 
 
+            // Sword from loaded model
             const swordGroup = new THREE.Group();
 
-            const sHilt = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.08), woodMat);
+            if (this.worldEngine.swordModel) {
 
-            sHilt.rotation.z = Math.PI / 2;
+                const swordClone = this.worldEngine.swordModel.clone();
 
-            const sBlade = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.8), swordMat);
+                swordGroup.add(swordClone);
 
-            sBlade.position.z = 0.5;
-
-            sBlade.rotation.z = Math.PI / 2;
-
-            swordGroup.add(sHilt, sBlade);
+            }
 
             swordGroup.name = 'sword';
 
@@ -156,21 +171,17 @@ export class PlayerController {
 
 
 
+            // Pickaxe from loaded model
+
             const pickGroup = new THREE.Group();
 
-            const pHandle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.6), woodMat);
+            if (this.worldEngine.pickaxeModel) {
 
-            pHandle.position.z = 0.3;
+                const pickaxeClone = this.worldEngine.pickaxeModel.clone();
 
-            const pHead = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.06), pickMat);
+                pickGroup.add(pickaxeClone);
 
-            pHead.position.z = 0.6;
-
-            pickGroup.add(pHandle, pHead);
-
-            pickGroup.rotation.z = Math.PI / 2;
-
-            pickGroup.rotation.x = -Math.PI / 8;
+            }
 
             pickGroup.name = 'pickaxe';
 
@@ -244,7 +255,7 @@ export class PlayerController {
 
         this.playerHand.position.set(0.6, -0.5, -0.8);
 
-        this.playerHand.rotation.x = -Math.PI / 6;
+        this.playerHand.rotation.x = -Math.PI / 12;
 
         this.playerHand.rotation.y = -Math.PI / 8;
 
@@ -274,6 +285,58 @@ export class PlayerController {
 
         this.camera.add(this.playerLight);
 
+        
+
+        // Store initial pickaxe rotation for tween reference
+        const mainPickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+
+        if (mainPickGroup) {
+
+            this.pickaxeIdleRotX = mainPickGroup.rotation.x;
+
+            this.pickaxeIdleRotY = mainPickGroup.rotation.y;
+
+            this.pickaxeIdleRotZ = mainPickGroup.rotation.z;
+
+        }
+
+    }
+
+    updateToolModels() {
+        // Update sword and pickaxe models after they're loaded
+        if (this.worldEngine.swordModel && this.worldEngine.pickaxeModel) {
+            // Get both tool groups (main hand and off hand)
+            const mainTools = this.playerHand.children[0];
+            const offTools = this.offHandGroup.children[0];
+
+            // Update main hand sword
+            const mainSwordGroup = mainTools.getObjectByName('sword');
+            if (mainSwordGroup && mainSwordGroup.children.length === 0) {
+                const swordClone = this.worldEngine.swordModel.clone();
+                mainSwordGroup.add(swordClone);
+            }
+
+            // Update main hand pickaxe
+            const mainPickGroup = mainTools.getObjectByName('pickaxe');
+            if (mainPickGroup && mainPickGroup.children.length === 0) {
+                const pickaxeClone = this.worldEngine.pickaxeModel.clone();
+                mainPickGroup.add(pickaxeClone);
+            }
+
+            // Update off hand sword
+            const offSwordGroup = offTools.getObjectByName('sword');
+            if (offSwordGroup && offSwordGroup.children.length === 0) {
+                const swordClone = this.worldEngine.swordModel.clone();
+                offSwordGroup.add(swordClone);
+            }
+
+            // Update off hand pickaxe
+            const offPickGroup = offTools.getObjectByName('pickaxe');
+            if (offPickGroup && offPickGroup.children.length === 0) {
+                const pickaxeClone = this.worldEngine.pickaxeModel.clone();
+                offPickGroup.add(pickaxeClone);
+            }
+        }
     }
 
 
@@ -466,6 +529,27 @@ export class PlayerController {
 
         this.miningIndicator.position.set(tx + 0.5, ty + 0.5, tz + 0.5);
 
+        
+
+        // Reset mining animation timer to start fresh
+        this.miningAnimationTimer = 0;
+
+        
+
+        // Capture and reset pickaxe to idle rotation at start of mining
+        const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+        if (pickGroup) {
+            this.pickaxeIdleRotX = pickGroup.rotation.x;
+            this.pickaxeIdleRotY = pickGroup.rotation.y;
+            this.pickaxeIdleRotZ = pickGroup.rotation.z;
+            // Reset pickaxe to idle rotation to ensure consistent animation start
+            pickGroup.rotation.set(this.pickaxeIdleRotX, this.pickaxeIdleRotY, this.pickaxeIdleRotZ);
+        }
+        
+        // Stop any ongoing tween when mining starts
+        this.isPickaxeTweening = false;
+        this.pickaxeTweenProgress = 0;
+
 
 
         const startTime = performance.now();
@@ -484,7 +568,17 @@ export class PlayerController {
 
                 this.miningIndicator.material.opacity = 0;
 
-                this.playerHand.rotation.x = -Math.PI / 6;
+                
+
+                // Start pickaxe tween when mining is cancelled
+                const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+                if (pickGroup && pickGroup.children.length > 0) {
+                    this.isPickaxeTweening = true;
+                    this.pickaxeTweenProgress = 0;
+                    this.pickaxeStartRotX = pickGroup.rotation.x;
+                    this.pickaxeStartRotY = pickGroup.rotation.y;
+                    this.pickaxeStartRotZ = pickGroup.rotation.z;
+                }
 
                 return;
 
@@ -553,7 +647,17 @@ export class PlayerController {
 
                 this.miningIndicator.material.opacity = 0;
 
-                this.playerHand.rotation.x = -Math.PI / 6;
+                
+
+                // Start pickaxe tween animation
+                const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+                if (pickGroup && pickGroup.children.length > 0) {
+                    this.isPickaxeTweening = true;
+                    this.pickaxeTweenProgress = 0;
+                    this.pickaxeStartRotX = pickGroup.rotation.x;
+                    this.pickaxeStartRotY = pickGroup.rotation.y;
+                    this.pickaxeStartRotZ = pickGroup.rotation.z;
+                }
 
                 this.uiManager.cleanInventory();
 
@@ -837,7 +941,17 @@ export class PlayerController {
 
                 this.miningIndicator.material.opacity = 0;
 
-                this.playerHand.rotation.x = -Math.PI / 6;
+                
+
+                // Start pickaxe tween when mining is cancelled
+                const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+                if (pickGroup && pickGroup.children.length > 0) {
+                    this.isPickaxeTweening = true;
+                    this.pickaxeTweenProgress = 0;
+                    this.pickaxeStartRotX = pickGroup.rotation.x;
+                    this.pickaxeStartRotY = pickGroup.rotation.y;
+                    this.pickaxeStartRotZ = pickGroup.rotation.z;
+                }
 
             }
 
@@ -968,6 +1082,11 @@ export class PlayerController {
 
 
     update(dt) {
+
+        // Update mining animation timer
+        if (this.isMining) {
+            this.miningAnimationTimer += dt;
+        }
 
         // Constrain camera to prevent looking directly up or down
         const euler = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
@@ -1258,11 +1377,23 @@ export class PlayerController {
 
             } else if (this.isMining) {
 
-                this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(now / 100)) * 0.8;
+                this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(this.miningAnimationTimer * 10)) * 0.8;
 
                 this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
 
                 this.playerHand.position.y = baseHandPosY;
+
+                
+
+                // Animate pickaxe rotation during mining
+
+                const miningPickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+
+                if (miningPickGroup) {
+
+                    miningPickGroup.rotation.x = -Math.abs(Math.sin(this.miningAnimationTimer * 10)) * 0.5;
+
+                }
 
             } else {
 
@@ -1314,11 +1445,23 @@ export class PlayerController {
 
             } else if (this.isMining) {
 
-                this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(now / 100)) * 0.8;
+                this.playerHand.rotation.x = baseRotX - Math.abs(Math.sin(this.miningAnimationTimer * 10)) * 0.8;
 
                 this.playerHand.position.copy(this.baseHandPos).add(this.handLagOffset).add(this.handSwayOffset);
 
                 this.playerHand.position.y = baseHandPosY;
+
+                
+
+                // Animate pickaxe rotation during mining
+
+                const idlePickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+
+                if (idlePickGroup) {
+
+                    idlePickGroup.rotation.x = -Math.abs(Math.sin(this.miningAnimationTimer * 10)) * 0.5;
+
+                }
 
             } else {
 
@@ -1349,6 +1492,62 @@ export class PlayerController {
                     this.offHandGroup.position.y = baseOffhandPosY;
 
                 }
+
+            }
+
+        }
+
+
+
+        // Update pickaxe tween animation (global, runs regardless of movement)
+
+        if (this.isPickaxeTweening) {
+
+            this.pickaxeTweenProgress = Math.min(1, this.pickaxeTweenProgress + dt / 0.4); // 400ms tween
+
+            const easeProgress = this.pickaxeTweenProgress * this.pickaxeTweenProgress * (3 - 2 * this.pickaxeTweenProgress); // Smoothstep
+
+
+
+            const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+
+            if (pickGroup) {
+
+                // Tween back to idle rotation
+
+                pickGroup.rotation.x = this.pickaxeStartRotX + (this.pickaxeIdleRotX - this.pickaxeStartRotX) * easeProgress;
+
+                pickGroup.rotation.y = this.pickaxeStartRotY + (this.pickaxeIdleRotY - this.pickaxeStartRotY) * easeProgress;
+
+                pickGroup.rotation.z = this.pickaxeStartRotZ + (this.pickaxeIdleRotZ - this.pickaxeStartRotZ) * easeProgress;
+
+            }
+
+
+
+            if (this.pickaxeTweenProgress >= 1) {
+
+                this.isPickaxeTweening = false;
+
+                const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+
+                if (pickGroup) {
+
+                    pickGroup.rotation.set(this.pickaxeIdleRotX, this.pickaxeIdleRotY, this.pickaxeIdleRotZ);
+
+                }
+
+            }
+
+        } else if (!this.isMining) {
+
+            // When not tweening and not mining, ensure pickaxe stays at idle rotation
+
+            const pickGroup = this.playerHand.children[0]?.getObjectByName('pickaxe');
+
+            if (pickGroup && (pickGroup.rotation.x !== this.pickaxeIdleRotX || pickGroup.rotation.y !== this.pickaxeIdleRotY || pickGroup.rotation.z !== this.pickaxeIdleRotZ)) {
+
+                pickGroup.rotation.set(this.pickaxeIdleRotX, this.pickaxeIdleRotY, this.pickaxeIdleRotZ);
 
             }
 

@@ -6,6 +6,7 @@ import { PlayerController } from './PlayerController.js';
 import { UIManager } from './UIManager.js';
 import { DayNightCycle } from './DayNightCycle.js';
 import { ObjectiveManager } from './ObjectiveManager.js';
+import { SECONDS_BEFORE_MONKEYS } from './GameConstants.js';
 
 class MonkeyCraft {
     constructor() {
@@ -69,6 +70,11 @@ class MonkeyCraft {
         // Generate initial world
         this.worldEngine.generateWorld();
         this.worldEngine.loadSaplingModel();
+        this.worldEngine.loadSwordModel();
+        this.worldEngine.loadPickaxeModel();
+        
+        // Update player hand with loaded models
+        setTimeout(() => this.playerController.updateToolModels(), 100);
         
         // Initialize campfire
         this.entityManager.initCampfire(() => this.endGame());
@@ -87,7 +93,7 @@ class MonkeyCraft {
         // Objective 1: Prepare for nightfall (1 minute timer)
         this.objectiveManager.addObjective(
             'PREPARE FOR NIGHTFALL',
-            600, // 1 minute in seconds
+            SECONDS_BEFORE_MONKEYS, // 1 minute in seconds
             () => {
                 // When timer completes, start spawning monkeys
                 this.entityManager.allowContinuousSpawning = true;

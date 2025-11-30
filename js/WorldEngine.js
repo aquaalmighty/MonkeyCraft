@@ -567,6 +567,22 @@ setCampfireLight(position) {
         });
     }
 
+    loadSwordModel() {
+        const loader = new THREE.GLTFLoader();
+        loader.load('assets/models/sword1.glb', (gltf) => {
+            this.swordModel = gltf.scene;
+            this.applyShaderFix(this.swordModel);
+        });
+    }
+
+    loadPickaxeModel() {
+        const loader = new THREE.GLTFLoader();
+        loader.load('assets/models/pickaxe1.glb', (gltf) => {
+            this.pickaxeModel = gltf.scene;
+            this.applyShaderFix(this.pickaxeModel);
+        });
+    }
+
     applyShaderFix(model) {
         model.traverse((child) => {
             if (child.isMesh) {
