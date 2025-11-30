@@ -13,6 +13,59 @@ export class ShadowBaker {
         
         // Shadow configuration
         this.maxSkyLight = 15; // Maximum light level from sky
+        
+        // NEW: Track dynamic light sources (torches, campfire)
+        this.dynamicLights = []; // Array of {pos: Vector3, intensity: number, radius: number}
+    }
+
+    // NEW: Add a dynamic light source
+    addDynamicLight(position, intensity, radius) {
+        const light = {
+            pos: position.clone(),
+            intensity: intensity,
+            radius: radius,
+            id: Math.random().toString(36) // Unique ID for tracking
+        };
+        this.dynamicLights.push(light);
+        return light.id;
+    }
+
+    // NEW: Update a dynamic light's position
+    updateDynamicLight(id, position) {
+        const light = this.dynamicLights.find(l => l.id === id);
+        if (light) {
+            light.pos.copy(position);
+        }
+    }
+
+    // NEW: Remove a dynamic light
+    removeDynamicLight(id) {
+        const index = this.dynamicLights.findIndex(l => l.id === id);
+        if (index !== -1) {
+            this.dynamicLights.splice(index, 1);
+        }
+    }
+
+    // NEW: Calculate light contribution from dynamic sources at a position
+    getDynamicLightContribution(x, y, z) {
+        if (this.dynamicLights.length === 0) return 0;
+        
+        let totalLight = 0;
+        const blockPos = new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5);
+        
+        for (const light of this.dynamicLights) {
+            const distance = blockPos.distanceTo(light.pos);
+            
+            // If within radius, calculate light falloff
+            if (distance < light.radius) {
+                // Quadratic falloff (inverse square law)
+                const falloff = 1.0 - (distance / light.radius);
+                const lightValue = light.intensity * (falloff * falloff);
+                totalLight = Math.max(totalLight, lightValue);
+            }
+        }
+        
+        return Math.min(15, totalLight); // Cap at max light level
     }
 
     setEnabled(enabled) {
@@ -58,7 +111,7 @@ export class ShadowBaker {
     // Convert light level (0-15) to brightness (0.0-1.0)
     lightToBrightness(lightLevel) {
         // INCREASED minimum brightness from 0.05 to 0.25 so it's never pitch black
-        if (lightLevel <= 0) return 0.25; // Minimum ambient light (never pitch black)
+        if (lightLevel <= 0) return 0.75; // Minimum ambient light (never pitch black)
         if (lightLevel >= this.maxSkyLight) return 1.0; // Full brightness
         
         // Non-linear brightness curve (similar to Minecraft)
@@ -101,7 +154,7 @@ export class ShadowBaker {
     // Get shadow brightness at a specific world position
     getShadowBrightness(x, y, z) {
         if (!this.enabled) return 1.0;
-        if (y < 0 || y >= WORLD_HEIGHT) return 0.05;
+        if (y < 0 || y >= WORLD_HEIGHT) return 0.25;
         
         const cx = Math.floor(x / CHUNK_SIZE);
         const cz = Math.floor(z / CHUNK_SIZE);
@@ -114,8 +167,15 @@ export class ShadowBaker {
         const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
         const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
         
-        const lightLevel = shadowmap[idx];
-        return this.lightToBrightness(lightLevel);
+        const skyLightLevel = shadowmap[idx];
+        
+        // NEW: Add dynamic light contribution
+        const dynamicLightLevel = this.getDynamicLightContribution(x, y, z);
+        
+        // Combine sky light and dynamic light (take the maximum)
+        const combinedLightLevel = Math.max(skyLightLevel, dynamicLightLevel);
+        
+        return this.lightToBrightness(combinedLightLevel);
     }
 
     // Bake all chunks in the world

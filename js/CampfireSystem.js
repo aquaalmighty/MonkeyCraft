@@ -3,9 +3,9 @@
 import { BLOCKS } from './GameConstants.js';
 
 export class CampfireSystem {
-    constructor(scene, worldEngine) {
+        constructor(scene, worldEngine) {
         this.scene = scene;
-        this.worldEngine = worldEngine;
+        this.worldEngine = worldEngine; // Make sure this is stored
         
         this.campfire = {
             mesh: null,
@@ -42,6 +42,9 @@ export class CampfireSystem {
             this.campfire.light = new THREE.PointLight(0xFF4500, 1.5, 15);
             this.campfire.light.position.set(0, 1.0, 0);
             this.campfire.mesh.add(this.campfire.light);
+            
+            // NEW: Register campfire with shadow system
+            this.worldEngine.setCampfireLight(this.campfire.mesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)));
 
             const bar = document.createElement('div');
             bar.className = 'world-health-bar campfire-bar';

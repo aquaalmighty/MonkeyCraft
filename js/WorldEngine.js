@@ -7,25 +7,58 @@ import { ShadowBaker } from './ShadowBaker.js';
 
 export class WorldEngine {
         constructor(scene, dayNightCycle = null) {
-        this.scene = scene;
-        this.chunks = {};
-        this.materials = [];
-        this.matMap = {};
-        this.saplingObjects = [];
-        this.saplingModel = null;
-        this.ao = new AmbientOcclusion(this);
-        // this.lighting = new LightingEngine(this); // COMMENT OUT OR DELETE
-        // this.lighting.setEnabled(false); // COMMENT OUT OR DELETE
-        this.shadowBaker = new ShadowBaker(this, dayNightCycle);
-        this.shadowBaker.setEnabled(true); // Temporarily disable to test
-        
-        // Track last shadow update
-        this.lastShadowUpdateAngle = 0;
-        this.shadowUpdateTimer = 0;
-        this.shadowUpdateInterval = 5.0;
-        
-        this.initMaterials();
+    this.scene = scene;
+    this.chunks = {};
+    this.materials = [];
+    this.matMap = {};
+    this.saplingObjects = [];
+    this.saplingModel = null;
+    this.ao = new AmbientOcclusion(this);
+    this.shadowBaker = new ShadowBaker(this, dayNightCycle);
+    this.shadowBaker.setEnabled(true);
+    
+    // NEW: Track dynamic light IDs
+    this.playerTorchLightId = null;
+    this.campfireLightId = null;
+    
+    // Track last shadow update
+    this.lastShadowUpdateAngle = 0;
+    this.shadowUpdateTimer = 0;
+    this.shadowUpdateInterval = 5.0;
+    
+    this.initMaterials();
+}
+
+// NEW: Update player torch light position
+updatePlayerTorchLight(position, isHoldingTorch) {
+    if (!this.shadowBaker || !this.shadowBaker.enabled) return;
+    
+    if (isHoldingTorch) {
+        if (this.playerTorchLightId === null) {
+            // Add torch light (intensity 12, radius 10 blocks)
+            this.playerTorchLightId = this.shadowBaker.addDynamicLight(position, 12, 10);
+        } else {
+            // Update existing torch position
+            this.shadowBaker.updateDynamicLight(this.playerTorchLightId, position);
+        }
+    } else {
+        // Remove torch light if not holding
+        if (this.playerTorchLightId !== null) {
+            this.shadowBaker.removeDynamicLight(this.playerTorchLightId);
+            this.playerTorchLightId = null;
+        }
     }
+}
+
+// NEW: Set campfire light position (call this once when campfire is created)
+setCampfireLight(position) {
+    if (!this.shadowBaker || !this.shadowBaker.enabled) return;
+    
+    if (this.campfireLightId === null) {
+        // Add campfire light (intensity 15, radius 15 blocks)
+        this.campfireLightId = this.shadowBaker.addDynamicLight(position, 15, 15);
+    }
+}
 
     createMaterial(color) {
         const canvas = document.createElement('canvas');

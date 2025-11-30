@@ -1341,15 +1341,19 @@ export class PlayerController {
 
         // Torch light
 
-        if (this.playerLight) {
-
-            const hasMainTorch = selectedBlockId === BLOCKS.TORCH;
-
-            const hasOffTorch = this.uiManager.offhandSlot.itemId === BLOCKS.TORCH;
-
-            this.playerLight.intensity = (hasMainTorch || hasOffTorch) ? 1.0 : 0.0;
-
-        }
+        // Torch light (existing code)
+    if (this.playerLight) {
+        const hasMainTorch = selectedBlockId === BLOCKS.TORCH;
+        const hasOffTorch = this.uiManager.offhandSlot.itemId === BLOCKS.TORCH;
+        this.playerLight.intensity = (hasMainTorch || hasOffTorch) ? 1.0 : 0.0;
+        
+        // NEW: Update shadow baker with torch position
+        const isHoldingTorch = hasMainTorch || hasOffTorch;
+        this.worldEngine.updatePlayerTorchLight(
+            this.controls.getObject().position.clone(),
+            isHoldingTorch
+        );
+    }
 
 
 
