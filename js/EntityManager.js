@@ -8,9 +8,10 @@ import { ParticleSystem } from './ParticleSystem.js';
 import { ItemSystem } from './ItemSystem.js';
 
 export class EntityManager {
-    constructor(scene, worldEngine) {
+    constructor(scene, worldEngine, soundManager) {
         this.scene = scene;
         this.worldEngine = worldEngine;
+        this.soundManager = soundManager;
         
         // Initialize subsystems
         this.monkeyBehavior = new MonkeyBehavior(worldEngine);
@@ -149,6 +150,15 @@ export class EntityManager {
         
         if (monkey.breakTimer >= 30.0) {
             if (monkey.breakingBlock) {
+                // Play break block sound
+                if (this.soundManager) {
+                    this.soundManager.playBreakBlockSound(new THREE.Vector3(
+                        monkey.breakingBlock.x + 0.5, 
+                        monkey.breakingBlock.y + 0.5, 
+                        monkey.breakingBlock.z + 0.5
+                    ));
+                }
+                
                 this.worldEngine.setWorldBlock(
                     monkey.breakingBlock.x,
                     monkey.breakingBlock.y,
@@ -196,6 +206,11 @@ export class EntityManager {
             if (hits.length > 0 && hits[0].distance < 4) {
                 m.health--;
                 m.hitCount++;
+                
+                // Play hit entity sound
+                if (this.soundManager) {
+                    this.soundManager.playHitEntitySound(m.mesh.position.clone());
+                }
                 
                 // If monkey is draining campfire, only aggro after 4 hits
                 // Otherwise, aggro immediately on any hit

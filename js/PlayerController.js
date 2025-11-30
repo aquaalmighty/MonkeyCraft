@@ -8,7 +8,7 @@ import { BLOCKS, BLOCK_COLORS, GRAVITY, SPEED, SPRINT_SPEED, JUMP_FORCE } from '
 
 export class PlayerController {
 
-    constructor(camera, controls, worldEngine, entityManager, uiManager) {
+    constructor(camera, controls, worldEngine, entityManager, uiManager, soundManager) {
 
         this.camera = camera;
 
@@ -19,6 +19,8 @@ export class PlayerController {
         this.entityManager = entityManager;
 
         this.uiManager = uiManager;
+
+        this.soundManager = soundManager;
 
 
 
@@ -111,6 +113,9 @@ export class PlayerController {
         this.previousOffhandSwayOffset = new THREE.Vector3();
 
         
+        // Walking sound tracking
+        this.lastWalkSoundTime = 0;
+        this.walkSoundInterval = 600; // ms between walk sounds
 
         // Pickaxe tween after mining
 
@@ -425,6 +430,10 @@ export class PlayerController {
 
             console.log('[LEFT CLICK]');
 
+            if (isSword && !this.isSwinging) {
+                this.soundManager.playSwingSwordSound();
+            }
+
             this.handleLeftClick(ray, isSword, isPickaxe);
 
         } else if (e.button === 2) {
@@ -614,6 +623,9 @@ export class PlayerController {
 
 
             if (elapsed >= breakTime) {
+
+                // Play mining sound at block location
+                this.soundManager.playMineSound(new THREE.Vector3(tx + 0.5, ty + 0.5, tz + 0.5));
 
                 this.worldEngine.setWorldBlock(
 
@@ -895,6 +907,9 @@ export class PlayerController {
 
                     console.log('[SUCCESS] Placing block', selectedBlockId, 'at', tx, ty, tz);
 
+                    // Play place block sound at placement location
+                    this.soundManager.playPlaceBlockSound(new THREE.Vector3(tx + 0.5, ty + 0.5, tz + 0.5));
+
                     this.worldEngine.setWorldBlock(tx, ty, tz, selectedBlockId);
 
                     this.uiManager.decrementItem(selectedBlockId);
@@ -1066,6 +1081,8 @@ export class PlayerController {
 
 
             if (horizontalDistSq < pickupRadiusSq && verticalDist < verticalRange) {
+
+                this.soundManager.playPickupItemSound();
 
                 this.uiManager.addItem(item.blockId, 1);
 
@@ -1603,6 +1620,18 @@ export class PlayerController {
         const ml = (this.moveState.r - this.moveState.l);
         this.playerVelocity.x = (fwd.x * mi + rgt.x * ml) * spd;
         this.playerVelocity.z = (fwd.z * mi + rgt.z * ml) * spd;
+
+        // Play walking sounds at intervals when moving
+        const isMovingHorizontally = Math.abs(this.playerVelocity.x) > 0.1 || Math.abs(this.playerVelocity.z) > 0.1;
+        if (isMovingHorizontally && this.canJump) {
+            const currentTime = performance.now();
+            const soundInterval = this.moveState.sprint ? 400 : 600; // Faster sounds when sprinting
+            
+            if (currentTime - this.lastWalkSoundTime >= soundInterval) {
+                this.soundManager.playWalkSound();
+                this.lastWalkSoundTime = currentTime;
+            }
+        }
 
         this.playerVelocity.y -= GRAVITY * dt;
 

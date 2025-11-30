@@ -20,19 +20,19 @@ export const MAX_HUNGER = 10;
 
 //REGULAR CONSTANTS
 
-//export const DAY_DURATION = 300;
+export const DAY_DURATION = 300;
 
-//export const SECONDS_BEFORE_MONKEYS = 60; // Time before monkeys start spawning
+export const SECONDS_BEFORE_MONKEYS = 60; // Time before monkeys start spawning
 
-//export const SAPLING_GROWTH_TIME = 60; // in seconds
+export const SAPLING_GROWTH_TIME = 60; // in seconds
 
 //TESTING CONSTANTS
 
-export const DAY_DURATION = 900;
+//export const DAY_DURATION = 900;
 
-export const SECONDS_BEFORE_MONKEYS = 900; // Time before monkeys start spawning
+//export const SECONDS_BEFORE_MONKEYS = 900; // Time before monkeys start spawning
 
-export const SAPLING_GROWTH_TIME = 20; // in seconds
+//export const SAPLING_GROWTH_TIME = 20; // in seconds
 
 // Block types enum
 export const BLOCKS = {

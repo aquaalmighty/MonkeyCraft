@@ -1,0 +1,78 @@
+{
+  "sounds": {
+    "walk1": {
+      "path": "assets/sounds/walk1.mp3",
+      "volume": 0.6,
+      "spatial": false,
+      "variablePitch": true,
+      "pitchVariation": 0.1
+    },
+    "walk2": {
+      "path": "assets/sounds/walk2.mp3",
+      "volume": 0.6,
+      "spatial": false,
+      "variablePitch": true,
+      "pitchVariation": 0.1
+    },
+    "walk3": {
+      "path": "assets/sounds/walk3.mp3",
+      "volume": 0.6,
+      "spatial": false,
+      "variablePitch": true,
+      "pitchVariation": 0.1
+    },
+    "walk4": {
+      "path": "assets/sounds/walk4.mp3",
+      "volume": 0.6,
+      "spatial": false,
+      "variablePitch": true,
+      "pitchVariation": 0.1
+    },
+    "mine1": {
+      "path": "assets/sounds/mine1.mp3",
+      "volume": 0.7,
+      "spatial": true,
+      "variablePitch": true,
+      "pitchVariation": 0.15
+    },
+    "mine2": {
+      "path": "assets/sounds/mine2.mp3",
+      "volume": 0.7,
+      "spatial": true,
+      "variablePitch": true,
+      "pitchVariation": 0.15
+    },
+    "breakblock": {
+      "path": "assets/sounds/breakblock.mp3",
+      "volume": 0.8,
+      "spatial": true,
+      "variablePitch": false
+    },
+    "placeblock": {
+      "path": "assets/sounds/placeblock.mp3",
+      "volume": 0.7,
+      "spatial": true,
+      "variablePitch": false
+    },
+    "hitEntity": {
+      "path": "assets/sounds/hitEntity.mp3",
+      "volume": 0.75,
+      "spatial": true,
+      "variablePitch": false
+    },
+    "swingsword": {
+      "path": "assets/sounds/swingsword.mp3",
+      "volume": 0.5,
+      "spatial": false,
+      "variablePitch": false
+    },
+    "pickupitem": {
+      "path": "assets/sounds/pickupitem.mp3",
+      "volume": 0.65,
+      "spatial": false,
+      "variablePitch": false
+    }
+  },
+  "pitchSeed": 12345,
+  "sequenceSeed": 54321
+}

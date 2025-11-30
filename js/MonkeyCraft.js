@@ -6,6 +6,7 @@ import { PlayerController } from './PlayerController.js';
 import { UIManager } from './UIManager.js';
 import { DayNightCycle } from './DayNightCycle.js';
 import { ObjectiveManager } from './ObjectiveManager.js';
+import { SoundManager } from './SoundManager.js';
 import { SECONDS_BEFORE_MONKEYS } from './GameConstants.js';
 
 class MonkeyCraft {
@@ -23,6 +24,7 @@ class MonkeyCraft {
         this.uiManager = null;
         this.dayNightCycle = null;
         this.objectiveManager = null;
+        this.soundManager = null;
     }
 
     init() {
@@ -51,21 +53,30 @@ class MonkeyCraft {
     // Initialize day/night cycle first (needed for shadows)
     this.dayNightCycle = new DayNightCycle(this.scene);
 
+    // Initialize sound manager early
+    this.soundManager = new SoundManager(this.scene, this.camera);
+
     // Initialize game subsystems (pass dayNightCycle to WorldEngine)
     this.worldEngine = new WorldEngine(this.scene, this.dayNightCycle);
     this.uiManager = new UIManager(this.controls);
-    this.entityManager = new EntityManager(this.scene, this.worldEngine);
+    this.entityManager = new EntityManager(this.scene, this.worldEngine, this.soundManager);
     this.objectiveManager = new ObjectiveManager();
     this.playerController = new PlayerController(
         this.camera,
         this.controls,
         this.worldEngine,
         this.entityManager,
-        this.uiManager
+        this.uiManager,
+        this.soundManager
     );
 
         // Setup event listeners
         this.setupEventListeners();
+
+        // Load sound config and audio buffers
+        this.soundManager.loadConfig().then(() => {
+            console.log('Sound manager initialized successfully');
+        });
 
         // Generate initial world
         this.worldEngine.generateWorld();
