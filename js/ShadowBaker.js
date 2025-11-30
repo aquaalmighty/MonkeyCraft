@@ -12,10 +12,11 @@ export class ShadowBaker {
         this.chunkShadowmaps = new Map();
         
         // Shadow configuration
-        this.maxSkyLight = 15; // Maximum light level from sky
-        
-        // NEW: Track dynamic light sources (torches, campfire)
-        this.dynamicLights = []; // Array of {pos: Vector3, intensity: number, radius: number}
+        this.maxSkyLight = 15;
+        this.minSkyLight = 6; // Moonlight level - increased for brighter nights
+
+        // Dynamic light sources
+        this.dynamicLights = [];
     }
 
     // NEW: Add a dynamic light source
@@ -80,13 +81,33 @@ export class ShadowBaker {
         const block = this.worldEngine.getWorldBlock(x, y, z);
         return block !== BLOCKS.AIR && block !== BLOCKS.SAPLING;
     }
+    
+    // *** NEW: Get the current skylight level based on time of day ***
+    getCurrentSkyLight() {
+        if (!this.dayNightCycle) return this.maxSkyLight;
+        
+        const sunAngle = this.dayNightCycle.getSunAngle();
+        const sunY = Math.sin(sunAngle); // -1 (midnight) to 1 (noon)
+        
+        if (sunY <= -0.2) { 
+            // Night time
+            return this.minSkyLight; 
+        } else if (sunY < 0.1) { 
+            // Sunrise/sunset (sunY range: -0.2 to 0.1)
+            const normalized = (sunY + 0.2) / 0.3; // 0.0 to 1.0
+            return this.minSkyLight + Math.floor(normalized * (this.maxSkyLight - this.minSkyLight));
+        }
+        
+        return this.maxSkyLight; // Full daylight
+    }
 
     // Cast a single ray straight down from sky to calculate light for entire column
     calculateShadowColumn(x, z) {
         const lightValues = new Array(WORLD_HEIGHT).fill(0);
         
         // Start from top and cast ray downward
-        let currentLight = this.maxSkyLight; // Start with max sky light
+        // *** CHANGED: Use dynamic skylight ***
+        let currentLight = this.getCurrentSkyLight();
         
         for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
             const block = this.worldEngine.getWorldBlock(x, y, z);
@@ -108,16 +129,16 @@ export class ShadowBaker {
         return lightValues;
     }
 
-    // Convert light level (0-15) to brightness (0.0-1.0)
+    // *** CHANGED: Convert light level (0-15) to brightness (0.0-1.0) ***
     lightToBrightness(lightLevel) {
-        // INCREASED minimum brightness from 0.05 to 0.25 so it's never pitch black
-        if (lightLevel <= 0) return 0.75; // Minimum ambient light (never pitch black)
-        if (lightLevel >= this.maxSkyLight) return 1.0; // Full brightness
+        // Brightened ambient light - increased minBrightness for lighter shadows
+        const minBrightness = 0.7; // The darkest a block can be (increased from 0.5)
+        if (lightLevel <= 0) return minBrightness; 
         
-        // Non-linear brightness curve (similar to Minecraft)
-        // This makes shadows more dramatic at low light levels
         const normalized = lightLevel / this.maxSkyLight;
-        return 0.25 + (Math.pow(normalized, 1.5) * 0.75);
+        // Using Math.pow(..., 2) creates a nice curve where
+        // shadows are darker and brights are brighter
+        return minBrightness + Math.pow(normalized, 2) * (1.0 - minBrightness);
     }
 
     // Bake shadows for a specific chunk
@@ -151,10 +172,152 @@ export class ShadowBaker {
         return shadowmap;
     }
 
-    // Get shadow brightness at a specific world position
+    // Get brightness
     getShadowBrightness(x, y, z) {
         if (!this.enabled) return 1.0;
-        if (y < 0 || y >= WORLD_HEIGHT) return 0.25;
+        if (y < 0 || y >= 32) return 0.25;
+        
+        return this.getShadowBrightnessImmediate(x, y, z);
+    }
+
+
+    // *** REPLACED: This is the complete, correct function ***
+    // NEW: Update lighting with smooth interpolation
+    updateLightInterpolation(dt) {
+
+        console.log('UPDATING LIGHT INTERPOLATION');
+
+        if (!this.enabled) return;
+        
+        // --- PART 1: Check for Day/Night Skylight Changes ---
+        this.skyLightUpdateTimer += dt;
+        if (this.skyLightUpdateTimer >= this.skyLightUpdateInterval) {
+            this.skyLightUpdateTimer = 0;
+            const newSkyLight = this.getCurrentSkyLight();
+            
+            if (newSkyLight !== this.lastCalculatedSkyLight) {
+                console.log(`Skylight changed from ${this.lastCalculatedSkyLight} to ${newSkyLight}. Re-baking all chunks.`);
+                this.lastCalculatedSkyLight = newSkyLight;
+                
+                // Re-bake all chunks with new skylight
+                this.bakeAllChunks(); 
+                
+                // All cached brightness values are now wrong
+                this.blockBrightnessCache.clear();
+            }
+        }
+
+        // --- PART 2: Update Dynamic Torch Light ---
+        
+        // Update torch positions periodically (every 0.5s)
+        this.torchUpdateTimer += dt;
+        if (this.torchUpdateTimer >= this.torchUpdateInterval) {
+            this.torchUpdateTimer = 0;
+            
+            // Mark blocks around dynamic lights as dirty
+            for (const light of this.dynamicLights) {
+                const radius = Math.ceil(light.radius);
+                const centerX = Math.floor(light.pos.x);
+                const centerY = Math.floor(light.pos.y);
+                const centerZ = Math.floor(light.pos.z);
+                
+                // Mark blocks in a sphere around the light
+                for (let x = centerX - radius; x <= centerX + radius; x++) {
+                    for (let y = centerY - radius; y <= centerY + radius; y++) {
+                        for (let z = centerZ - radius; z <= centerZ + radius; z++) {
+                            if (y < 0 || y >= 32) continue;
+                            
+                            const dx = x - light.pos.x;
+                            const dy = y - light.pos.y;
+                            const dz = z - light.pos.z;
+                            const distSq = dx*dx + dy*dy + dz*dz;
+                            
+                            if (distSq <= light.radius * light.radius) {
+                                const blockKey = `${x},${y},${z}`;
+                                this.dirtyBlocks.add(blockKey);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Process dirty blocks periodically
+        this.blockUpdateTimer += dt;
+        if (this.blockUpdateTimer >= this.blockUpdateInterval && this.dirtyBlocks.size > 0) {
+            this.blockUpdateTimer = 0;
+            
+            // Process a batch of dirty blocks
+            const batchSize = Math.min(100, this.dirtyBlocks.size);
+            let processed = 0;
+            
+            for (const blockKey of this.dirtyBlocks) {
+                if (processed >= batchSize) break;
+                
+                const [x, y, z] = blockKey.split(',').map(Number);
+                const newTarget = this.getShadowBrightnessImmediate(x, y, z);
+                
+                let cached = this.blockBrightnessCache.get(blockKey);
+                if (!cached) {
+                    cached = { current: newTarget, target: newTarget };
+                    this.blockBrightnessCache.set(blockKey, cached);
+                } else {
+                    cached.target = newTarget;
+                }
+                
+                this.dirtyBlocks.delete(blockKey);
+                processed++;
+            }
+        }
+        
+        // --- PART 3: The Critical Fix ---
+        // This loop runs every frame, interpolates light, 
+        // and marks chunks dirty so they actually redraw.
+        
+        for (const [blockKey, cache] of this.blockBrightnessCache.entries()) {
+            if (Math.abs(cache.current - cache.target) > 0.001) {
+                const diff = cache.target - cache.current;
+                const oldCurrent = cache.current;
+                cache.current += diff * this.interpolationSpeed * dt;
+                
+                // Snap when very close
+                if (Math.abs(diff) < 0.01) {
+                    cache.current = cache.target;
+                }
+
+                // *** THIS IS THE FIX ***
+                // If the value changed, mark the chunk as dirty so it redraws
+                if (Math.abs(cache.current - oldCurrent) > 0.01) {
+                    const [x, y, z] = blockKey.split(',').map(Number);
+                    const cx = Math.floor(x / CHUNK_SIZE);
+                    const cz = Math.floor(z / CHUNK_SIZE);
+                    this.worldEngine.markChunkDirty(cx, cz);
+                }
+            }
+        }
+        
+        // Clean up cache periodically (keep last 1000 entries)
+        if (this.blockBrightnessCache.size > 1000) {
+            const entries = Array.from(this.blockBrightnessCache.entries());
+            const sorted = entries.sort((a, b) => {
+                const aDiff = Math.abs(a[1].current - a[1].target);
+                const bDiff = Math.abs(b[1].current - b[1].target);
+                return bDiff - aDiff; // Active interpolations first
+            });
+            
+            this.blockBrightnessCache.clear();
+            for (let i = 0; i < 500; i++) {
+                if (sorted[i]) {
+                    this.blockBrightnessCache.set(sorted[i][0], sorted[i][1]);
+                }
+            }
+        }
+    }
+
+    // Immediate calculation (no interpolation)
+    getShadowBrightnessImmediate(x, y, z) {
+        if (!this.enabled) return 1.0;
+        if (y < 0 || y >= 32) return 0.25;
         
         const cx = Math.floor(x / CHUNK_SIZE);
         const cz = Math.floor(z / CHUNK_SIZE);
@@ -168,11 +331,7 @@ export class ShadowBaker {
         const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
         
         const skyLightLevel = shadowmap[idx];
-        
-        // NEW: Add dynamic light contribution
         const dynamicLightLevel = this.getDynamicLightContribution(x, y, z);
-        
-        // Combine sky light and dynamic light (take the maximum)
         const combinedLightLevel = Math.max(skyLightLevel, dynamicLightLevel);
         
         return this.lightToBrightness(combinedLightLevel);
@@ -192,6 +351,11 @@ export class ShadowBaker {
         
         const endTime = performance.now();
         console.log(`Shadow baking complete in ${(endTime - startTime).toFixed(2)}ms`);
+        
+        // IMPORTANT: Mark all chunks as dirty so they redraw with new shadows
+        for (const chunkKey in this.worldEngine.chunks) {
+            this.worldEngine.chunks[chunkKey].dirty = true;
+        }
     }
 
     // Update a column and its 8 neighbors when a block changes
@@ -210,7 +374,7 @@ export class ShadowBaker {
         }
     }
 
-    // Update a single column's shadowmap
+    // NEW: Mark blocks as dirty when columns update
     updateSingleColumn(x, z) {
         const cx = Math.floor(x / CHUNK_SIZE);
         const cz = Math.floor(z / CHUNK_SIZE);
@@ -218,7 +382,6 @@ export class ShadowBaker {
         
         const shadowmap = this.chunkShadowmaps.get(chunkKey);
         if (!shadowmap) {
-            // If chunk doesn't have a shadowmap, bake it
             this.bakeChunkShadows(cx, cz);
             return;
         }
@@ -233,6 +396,10 @@ export class ShadowBaker {
         for (let y = 0; y < WORLD_HEIGHT; y++) {
             const idx = lx + lz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
             shadowmap[idx] = columnLights[y];
+            
+            // NEW: Mark these blocks as dirty for smooth interpolation
+            const blockKey = `${x},${y},${z}`;
+            this.dirtyBlocks.add(blockKey);
         }
     }
 

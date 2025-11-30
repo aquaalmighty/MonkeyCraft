@@ -87,4 +87,23 @@ export class DayNightCycle {
             };
         }
     }
+
+    // NEW: Get the current skylight level based on time of day
+    getCurrentSkyLight() {
+        if (!this.dayNightCycle) return this.maxSkyLight;
+        
+        const sunAngle = this.dayNightCycle.getSunAngle();
+        const sunY = Math.sin(sunAngle); // -1 (midnight) to 1 (noon)
+        
+        if (sunY <= -0.2) { 
+            // Night time
+            return this.minSkyLight; 
+        } else if (sunY < 0.1) { 
+            // Sunrise/sunset (sunY range: -0.2 to 0.1)
+            const normalized = (sunY + 0.2) / 0.3; // 0.0 to 1.0
+            return this.minSkyLight + Math.floor(normalized * (this.maxSkyLight - this.minSkyLight));
+        }
+        
+        return this.maxSkyLight; // Full daylight
+    }
 }

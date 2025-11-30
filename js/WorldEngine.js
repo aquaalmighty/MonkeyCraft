@@ -1,6 +1,6 @@
 // WorldEngine.js - Chunk generation, block management, and mesh generation with Ambient Occlusion
 
-import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_SIZE_CHUNKS, TEXTURE_SIZE, BLOCKS, BLOCK_COLORS, CUBE_FACES } from './GameConstants.js';
+import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_SIZE_CHUNKS, TEXTURE_SIZE, BLOCKS, BLOCK_COLORS, CUBE_FACES, SAPLING_GROWTH_TIME } from './GameConstants.js';
 import { AmbientOcclusion } from './AmbientOcclusion.js';
 //import { LightingEngine } from './LightingEngine.js';
 import { ShadowBaker } from './ShadowBaker.js';
@@ -47,6 +47,13 @@ updatePlayerTorchLight(position, isHoldingTorch) {
             this.shadowBaker.removeDynamicLight(this.playerTorchLightId);
             this.playerTorchLightId = null;
         }
+    }
+}
+
+// NEW: Update lighting interpolation (call every frame)
+updateLightingInterpolation(dt) {
+    if (this.shadowBaker && this.shadowBaker.enabled) {
+        this.shadowBaker.updateLightInterpolation(dt);
     }
 }
 
@@ -203,6 +210,7 @@ setCampfireLight(position) {
             );
             if (sIdx !== -1) {
                 this.scene.remove(this.saplingObjects[sIdx].mesh);
+                this.scene.remove(this.saplingObjects[sIdx].hitbox);
                 this.saplingObjects[sIdx].bar.remove();
                 this.saplingObjects.splice(sIdx, 1);
             }
@@ -214,6 +222,17 @@ setCampfireLight(position) {
         sm.position.set(x + 0.5, y, z + 0.5);
         this.scene.add(sm);
         
+        // Create a hitbox mesh for the sapling (invisible box for raycasting)
+        const hitboxGeometry = new THREE.BoxGeometry(0.6, 1.0, 0.6);
+        const hitboxMaterial = new THREE.MeshBasicMaterial({ 
+            transparent: true, 
+            opacity: 0, 
+            side: THREE.DoubleSide 
+        });
+        const hitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
+        hitbox.position.set(x + 0.5, y + 0.5, z + 0.5);
+        this.scene.add(hitbox);
+        
         const bar = document.createElement('div');
         bar.className = 'world-health-bar';
         bar.style.width = '40px';
@@ -224,6 +243,7 @@ setCampfireLight(position) {
         
         this.saplingObjects.push({
             mesh: sm,
+            hitbox: hitbox,
             pos: new THREE.Vector3(x + 0.5, y, z + 0.5),
             timer: 0,
             bar: bar,
@@ -566,16 +586,17 @@ setCampfireLight(position) {
             s.bar.style.display = 'block';
             this.updateEntityLabel(s.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), s.bar, camera);
             
-            const percent = Math.min(100, (s.timer / 120) * 100);
+            const percent = Math.min(100, (s.timer / SAPLING_GROWTH_TIME) * 100);
             s.fill.style.width = percent + '%';
             
-            if (s.timer >= 120) {
+            if (s.timer >= SAPLING_GROWTH_TIME) { //SAPLING GROWTH TIME
                 const wx = Math.floor(s.pos.x);
                 const wy = Math.floor(s.pos.y);
                 const wz = Math.floor(s.pos.z);
                 
                 if (this.growTreeAt(wx, wy, wz)) {
                     this.scene.remove(s.mesh);
+                    this.scene.remove(s.hitbox);
                     s.bar.remove();
                     this.saplingObjects.splice(i, 1);
                 }
@@ -618,6 +639,16 @@ setCampfireLight(position) {
             }
             
             this.shadowUpdateTimer = 0;
+        }
+    }
+
+    // NEW: Force chunk mesh updates for interpolated lighting
+    updateChunksForLighting() {
+        if (!this.shadowBaker || !this.shadowBaker.enabled) return;
+        
+        // Mark all chunks as dirty to force re-render with new interpolated values
+        for (let key in this.chunks) {
+            this.chunks[key].dirty = true;
         }
     }
 }

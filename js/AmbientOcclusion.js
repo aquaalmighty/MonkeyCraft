@@ -103,7 +103,8 @@ export class AmbientOcclusion {
      * Convert AO value to brightness multiplier
      */
     aoToBrightness(ao) {
-        if (!this.enabled) return 1.0; // No darkening when disabled
-        return 0.4 + (ao / 3) * 0.6;
+        if (!this.enabled) return 1.0;
+        return 0.2 + (ao / 3) * 0.8; // darker shadows
     }
+
 }

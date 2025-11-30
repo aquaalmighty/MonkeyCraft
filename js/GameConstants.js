@@ -19,6 +19,8 @@ export const MAX_HUNGER = 10;
 // Day/Night cycle
 export const DAY_DURATION = 900;
 
+export const SAPLING_GROWTH_TIME = 20; // in seconds
+
 // Block types enum
 export const BLOCKS = {
     AIR: 0,
@@ -41,7 +43,7 @@ export const BLOCK_COLORS = {
     [BLOCKS.GRASS]: '#567d46',
     [BLOCKS.DIRT]: '#5c4033',
     [BLOCKS.STONE]: '#7d7d7d',
-    [BLOCKS.WOOD]: '#4a3728',
+    [BLOCKS.WOOD]: '#6b5344',
     [BLOCKS.LEAVES]: '#2d5a27',
     [BLOCKS.PLANKS]: '#966f33',
     [BLOCKS.BEDROCK]: '#222',

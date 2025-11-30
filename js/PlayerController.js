@@ -198,13 +198,15 @@ export class PlayerController {
 
             const handMesh = new THREE.Mesh(
 
-                new THREE.BoxGeometry(0.25, 0.35, 0.15),
+                new THREE.BoxGeometry(0.3, 0.3, 0.5),
 
                 new THREE.MeshLambertMaterial({ color: 0xF0C0A0 })
 
             );
 
             handMesh.name = 'hand';
+
+            handMesh.position.z = -0.15;
 
             group.add(handMesh);
 
@@ -399,8 +401,12 @@ export class PlayerController {
 
 
         const meshes = Object.values(this.worldEngine.chunks).map(c => c.mesh).filter(Boolean);
+        
+        // Also include sapling hitboxes for raycasting
+        const saplingHitboxes = this.worldEngine.saplingObjects.map(s => s.hitbox);
+        const allMeshes = [...meshes, ...saplingHitboxes];
 
-        const hits = ray.intersectObjects(meshes);
+        const hits = ray.intersectObjects(allMeshes);
 
 
 
@@ -420,7 +426,9 @@ export class PlayerController {
 
             const tz = Math.floor(p.z - n.z * 0.1);
 
-            const b = this.worldEngine.getWorldBlock(tx, ty, tz);
+            // Check if hit a sapling hitbox directly
+            const hitSapling = this.worldEngine.saplingObjects.find(s => s.hitbox === hit.object);
+            const b = hitSapling ? BLOCKS.SAPLING : this.worldEngine.getWorldBlock(tx, ty, tz);
 
 
 
@@ -470,9 +478,28 @@ export class PlayerController {
 
                 this.currentMiningBlock.y !== ty ||
 
-                this.currentMiningBlock.z !== tz ||
+                this.currentMiningBlock.z !== tz) {
 
-                this.worldEngine.getWorldBlock(tx, ty, tz) === BLOCKS.AIR) {
+                this.isMining = false;
+
+                this.miningIndicator.material.opacity = 0;
+
+                this.playerHand.rotation.x = -Math.PI / 6;
+
+                return;
+
+            }
+
+            
+            // Check if block still exists (for both regular blocks and saplings)
+            const currentBlock = this.worldEngine.getWorldBlock(tx, ty, tz);
+            const saplingStillExists = this.worldEngine.saplingObjects.some(s => 
+                Math.floor(s.pos.x) === tx + 0.5 && 
+                Math.floor(s.pos.y) === ty && 
+                Math.floor(s.pos.z) === tz + 0.5
+            );
+            
+            if (currentBlock === BLOCKS.AIR && !saplingStillExists) {
 
                 this.isMining = false;
 
@@ -878,7 +905,7 @@ export class PlayerController {
 
                     const block = this.worldEngine.getWorldBlock(ix, iy, iz);
 
-                    if (block !== BLOCKS.AIR && block !== BLOCKS.SAPLING) return true;
+                    if (block !== BLOCKS.AIR) return true;
 
                 }
 

@@ -151,15 +151,8 @@ class MonkeyCraft {
         // Update all game systems
         this.dayNightCycle.update(dt, () => this.uiManager.incrementDay());
         
-        // Update lighting system (throttled internally) - only if enabled
-        if (this.worldEngine.lighting && this.worldEngine.lighting.enabled) {
-            this.worldEngine.lighting.sunAngle = this.dayNightCycle.getSunAngle();
-            this.worldEngine.lighting.sunColor = this.dayNightCycle.getSunColor();
-            this.worldEngine.lighting.updateLighting(dt);
-        }
-
-        // Update shadows (throttled internally)
-        //this.worldEngine.updateShadows(dt);
+        // Update lighting interpolation every frame
+        this.worldEngine.updateLightingInterpolation(dt);
         
         this.objectiveManager.update(dt);
         
@@ -184,7 +177,7 @@ class MonkeyCraft {
         this.playerController.update(dt);
         this.uiManager.updateHunger(dt);
         
-        // Update chunks
+        // Update chunks - this now uses interpolated lighting values
         this.worldEngine.updateChunks();
         
         if (this.uiManager.checkPlayerDeath(this.controls)) {

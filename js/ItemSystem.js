@@ -64,8 +64,7 @@ export class ItemSystem {
                 const iz = Math.floor(item.mesh.position.z);
                 const iy = Math.floor(item.mesh.position.y - 0.15);
 
-                if (this.worldEngine.getWorldBlock(ix, iy, iz) !== BLOCKS.AIR && 
-                    this.worldEngine.getWorldBlock(ix, iy, iz) !== BLOCKS.SAPLING) {
+                if (this.worldEngine.getWorldBlock(ix, iy, iz) !== BLOCKS.AIR) {
                     const settleY = iy + 1.15;
                     if (settleY <= item.spawnY + 0.5) {
                         item.baseY = settleY;
