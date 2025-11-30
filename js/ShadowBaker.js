@@ -15,8 +15,22 @@ export class ShadowBaker {
         this.maxSkyLight = 15;
         this.minSkyLight = 6; // Moonlight level - increased for brighter nights
 
+        // NEW: Track skylight changes
+        this.lastCalculatedSkyLight = -1;
+        this.skyLightUpdateTimer = 0;
+        this.skyLightUpdateInterval = 1.0; // Check if skylight changed every 1s
+        
         // Dynamic light sources
         this.dynamicLights = [];
+        
+        // NEW: Interpolation system
+        this.blockBrightnessCache = new Map(); // "x,y,z" -> {current: float, target: float}
+        this.torchUpdateTimer = 0.2;
+        this.torchUpdateInterval = 0.5; // Update torch influence every 0.5s
+        this.blockUpdateTimer = 0;
+        this.blockUpdateInterval = 0.05; // Check for block updates every 50ms
+        this.interpolationSpeed = 2.0; // Smooth, visible interpolation (lower = slower)
+        this.dirtyBlocks = new Set(); // Blocks that need recalculation
     }
 
     // NEW: Add a dynamic light source
@@ -172,12 +186,23 @@ export class ShadowBaker {
         return shadowmap;
     }
 
-    // Get brightness
+    // Get brightness with interpolation
     getShadowBrightness(x, y, z) {
         if (!this.enabled) return 1.0;
         if (y < 0 || y >= 32) return 0.25;
         
-        return this.getShadowBrightnessImmediate(x, y, z);
+        const blockKey = `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`;
+        
+        // Check cache first
+        const cached = this.blockBrightnessCache.get(blockKey);
+        if (cached) {
+            return cached.current; // Return interpolated value
+        }
+        
+        // Not cached yet - calculate immediately and cache it
+        const brightness = this.getShadowBrightnessImmediate(x, y, z);
+        this.blockBrightnessCache.set(blockKey, { current: brightness, target: brightness });
+        return brightness;
     }
 
 
